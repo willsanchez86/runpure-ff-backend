@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+*.log
+# Firebase service-account keys never go in the repo (ADR-0015)
+*firebase-adminsdk*.json
+service-account*.json

@@ -1,0 +1,13 @@
+query PipelineRuns($limit: Int) {
+  pipelineRuns(limit: $limit) {
+    id
+    kind
+    startedAt
+    finishedAt
+    outcome
+    piecesLoaded
+    piecesSkipped
+    piecesFailed
+    error
+  }
+}

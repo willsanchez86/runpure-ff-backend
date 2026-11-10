@@ -1,0 +1,12 @@
+query IngestLedger {
+  ingestLedger {
+    dataset
+    season
+    status
+    rowsLoaded
+    sourceEtag
+    startedAt
+    finishedAt
+    error
+  }
+}

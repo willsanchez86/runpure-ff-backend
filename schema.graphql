@@ -1,0 +1,49 @@
+"""One loaded piece: a dataset for one season (ingest_ledger)."""
+type IngestLedgerEntry {
+  contentLength: Float
+  dataset: String
+  error: String
+  finishedAt: String
+  rowsLoaded: Int
+
+  """0 for single-file datasets"""
+  season: Int
+  sourceEtag: String
+  sourceLastModified: String
+  sourceUrl: String
+  startedAt: String
+  status: String
+}
+
+"""One pipeline run (job_run)."""
+type JobRun {
+  error: String
+  finishedAt: String
+  id: Int
+  kind: String
+  outcome: String
+  piecesFailed: Int
+  piecesLoaded: Int
+  piecesSkipped: Int
+  startedAt: String
+}
+
+type Query {
+  """Every ledger piece. Operator accounts only."""
+  ingestLedger: [IngestLedgerEntry!]
+
+  """The account making this request."""
+  me: User
+
+  """Most recent pipeline runs, newest first. Operator accounts only."""
+  pipelineRuns(
+    """1 to 100"""
+    limit: Int = 20
+  ): [JobRun!]
+}
+
+"""The signed-in account."""
+type User {
+  id: ID
+  isOperator: Boolean
+}

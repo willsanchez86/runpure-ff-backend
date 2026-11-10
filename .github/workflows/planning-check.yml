@@ -1,0 +1,20 @@
+name: planning-refs
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+jobs:
+  planning-refs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/runpure-ff-planning
+          ref: main
+          path: planning
+          token: ${{ secrets.PLANNING_REPO_TOKEN }}
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node scripts/check-planning-refs.mjs planning
