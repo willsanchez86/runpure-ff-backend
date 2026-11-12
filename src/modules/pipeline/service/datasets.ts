@@ -12,23 +12,26 @@
  *   season_opener  - everything else: the Wednesday after Labor Day (default)
  *
  * Order matters: datasets load in this order, and `team` comes first because every
- * team-code column has a foreign key to it (ETL spec Â§7.2). `team` loads by upsert,
+ * team-code column has a foreign key to it (ETL spec §7.2). `team` loads by upsert,
  * since MySQL rejects deleting a team row that other tables still reference.
  *
  * `table` and `columns` are the hand-written mapping (ADR-0010) from CSV header to
  * MySQL column. A dataset without them is skipped by the loader. Run
  * `npm run headers -- --dataset <name>` to list a dataset's columns; table and column
- * names follow the ETL spec Â§7.2 and its data dictionary.
+ * names follow the ETL spec §7.2 and its data dictionary.
  *
- * File paths from the ETL spec Â§4.1.
+ * File paths from the ETL spec §4.1.
  */
 
+/** Which seasons a dataset loads and keeps; see the header above. */
 export type DatasetScope = 'history' | 'current_season' | 'single_file';
+/** When a seasonal dataset switches to the new season (D6). */
 export type SeasonRollover = 'march_15' | 'season_opener';
 
 /** Target column name, or a column plus a cast from the CSV string. */
 export type ColumnSpec = string | { to: string; cast?: (value: string) => unknown };
 
+/** One nflverse dataset and its hand-written mapping. */
 export interface DatasetDef {
   name: string;
   scope: DatasetScope;
@@ -48,10 +51,12 @@ export interface DatasetDef {
   columns?: Record<string, ColumnSpec>;
 }
 
+/** Base URL of nflverse release files. */
 export const RELEASE_BASE = 'https://github.com/nflverse/nflverse-data/releases/download';
 
+/** Every dataset, in load order. */
 export const datasets: DatasetDef[] = [
-  // Loaded first: every team-code column has a foreign key to it (D9a; ETL spec Â§7.2).
+  // Loaded first: every team-code column has a foreign key to it (D9a; ETL spec §7.2).
   { name: 'teams', scope: 'single_file', replace: 'upsert', path: () => 'teams/teams_colors_logos.csv' },
 
   // Weekly player and team stat lines (nflfastR::calculate_stats). Every season from 2022.
@@ -66,7 +71,7 @@ export const datasets: DatasetDef[] = [
   { name: 'injuries', scope: 'history', path: (s) => `injuries/injuries_${s}.csv` },
 
   // Single files covering all seasons. Player and game references carry no database
-  // foreign key (ETL spec Â§7.2), so these two are replaced whole.
+  // foreign key (ETL spec §7.2), so these two are replaced whole.
   { name: 'schedules', scope: 'single_file', path: () => 'schedules/games.csv' },
   { name: 'players', scope: 'single_file', path: () => 'players/players.csv' },
 
@@ -74,7 +79,7 @@ export const datasets: DatasetDef[] = [
   { name: 'depth_charts', scope: 'current_season', path: (s) => `depth_charts/depth_charts_${s}.csv` },
   { name: 'pbp', scope: 'current_season', path: (s) => `pbp/play_by_play_${s}.csv.gz`, gzip: true },
 
-  // Shape of a mapped dataset (illustration only; columns keep nflverse's names, Â§7.2.2):
+  // Shape of a mapped dataset (illustration only; columns keep nflverse's names, §7.2.2):
   // {
   //   name: 'schedules', scope: 'single_file', path: () => 'schedules/games.csv',
   //   table: 'game',
@@ -89,6 +94,7 @@ export const datasets: DatasetDef[] = [
   // },
 ];
 
+/** The dataset with this name, if any. */
 export function findDataset(name: string): DatasetDef | undefined {
   return datasets.find((d) => d.name === name);
 }

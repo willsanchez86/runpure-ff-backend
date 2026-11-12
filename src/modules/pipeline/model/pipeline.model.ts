@@ -1,11 +1,14 @@
+/** Queries on ingest_ledger and job_run (ADR-0006; ETL spec §5.3; sql/0001_pipeline_tables.sql). */
 import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 
-// Timestamps are written with UTC_TIMESTAMP(): DATETIME values are UTC (ETL spec Â§7.2.2).
+// Timestamps are written with UTC_TIMESTAMP(): DATETIME values are UTC (ETL spec §7.2.2).
 
 // ---- ingest_ledger ---------------------------------------------------------
 
+/** Ledger state of one piece. */
 export type LedgerStatus = 'downloading' | 'loaded' | 'failed';
 
+/** One ingest_ledger row: a dataset for one season (season 0 for single files). */
 export interface LedgerRow extends RowDataPacket {
   id: number;
   dataset: string;
@@ -21,6 +24,7 @@ export interface LedgerRow extends RowDataPacket {
   finished_at: Date | null;
 }
 
+/** The ledger row for one piece, if any. */
 export async function findLedger(pool: Pool, dataset: string, season: number): Promise<LedgerRow | undefined> {
   const [rows] = await pool.query<LedgerRow[]>(
     'SELECT * FROM ingest_ledger WHERE dataset = ? AND season = ?',
@@ -29,11 +33,13 @@ export async function findLedger(pool: Pool, dataset: string, season: number): P
   return rows[0];
 }
 
+/** Every ledger row, by dataset and season. */
 export async function listLedger(pool: Pool): Promise<LedgerRow[]> {
   const [rows] = await pool.query<LedgerRow[]>('SELECT * FROM ingest_ledger ORDER BY dataset, season');
   return rows;
 }
 
+/** Values written to the ledger for one piece. */
 export interface LedgerUpsert {
   dataset: string;
   season: number;
@@ -46,6 +52,7 @@ export interface LedgerUpsert {
   error?: string | null;
 }
 
+/** Inserts or updates a piece's ledger row. Status downloading restarts started_at and clears finished_at. */
 export async function upsertLedger(pool: Pool, u: LedgerUpsert): Promise<void> {
   await pool.query(
     `INSERT INTO ingest_ledger
@@ -79,9 +86,12 @@ export async function upsertLedger(pool: Pool, u: LedgerUpsert): Promise<void> {
 
 // ---- job_run ---------------------------------------------------------------
 
+/** Kind of pipeline run. */
 export type JobKind = 'ingest' | 'backfill';
+/** Result of a pipeline run. */
 export type JobOutcome = 'running' | 'ok' | 'failed' | 'skipped_locked';
 
+/** One job_run row. */
 export interface JobRunRow extends RowDataPacket {
   id: number;
   kind: JobKind;
@@ -94,12 +104,14 @@ export interface JobRunRow extends RowDataPacket {
   error: string | null;
 }
 
+/** Pieces loaded, skipped and failed in one run. */
 export interface PieceCounts {
   loaded: number;
   skipped: number;
   failed: number;
 }
 
+/** Records a new run as running; returns its id. */
 export async function startJobRun(pool: Pool, kind: JobKind): Promise<number> {
   const [result] = await pool.query<ResultSetHeader>(
     'INSERT INTO job_run (kind, started_at) VALUES (?, UTC_TIMESTAMP())',
@@ -108,6 +120,7 @@ export async function startJobRun(pool: Pool, kind: JobKind): Promise<number> {
   return result.insertId;
 }
 
+/** Records a run's outcome, counts and any error. */
 export async function finishJobRun(
   pool: Pool,
   id: number,
@@ -123,6 +136,7 @@ export async function finishJobRun(
   );
 }
 
+/** The most recent runs, newest first. */
 export async function recentJobRuns(pool: Pool, limit = 20): Promise<JobRunRow[]> {
   const [rows] = await pool.query<JobRunRow[]>(
     'SELECT * FROM job_run ORDER BY id DESC LIMIT ?',

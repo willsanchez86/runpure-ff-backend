@@ -60,13 +60,14 @@ npm run headers      print each dataset's CSV columns and a sample row (for mapp
 npm run ingest       one incremental run now (current season only)
 npm run backfill     one-time history load: -- --from 2022 --to 2026 [--dataset name]
 npm run typecheck    tsc --noEmit
+npm run lint         ESLint: JSDoc required on exports (also runs before each commit and in CI)
 npm run build && npm start
 ```
 
 ## Mapping a dataset
 
 1. `npm run headers -- --dataset stats_player_week` to see the columns.
-2. Write the `CREATE TABLE` (ETL spec Â§7.2 and data dictionary) in a new
+2. Write the `CREATE TABLE` (ETL spec §7.2 and data dictionary) in a new
    `sql/000N_*.sql` file and apply it by hand.
 3. Fill `table` and `columns` for that dataset in `datasets.ts`.
 4. `npm run ingest -- --dataset stats_player_week`.
@@ -85,4 +86,4 @@ Datasets without a mapping are skipped and reported.
 - Current season (D6): rosters switch to the new season on March 15; every other
   seasonal dataset on the Wednesday after Labor Day. `CURRENT_SEASON` overrides both.
 - Empty strings and `NA` become NULL.
-- Not built yet: the checks that block or warn on a load (ETL spec Â§8, D10).
+- Not built yet: the checks that block or warn on a load (ETL spec §8, D10).

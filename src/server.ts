@@ -1,3 +1,4 @@
+/** Process entry: HTTP server, in-process scheduler and graceful shutdown (ADR-0008). */
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { closePool } from './db/pool.js';

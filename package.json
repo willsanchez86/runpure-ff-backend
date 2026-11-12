@@ -16,7 +16,9 @@
     "spike": "tsx src/jobs/spike-yoga.ts",
     "ingest": "tsx src/jobs/ingest.ts",
     "backfill": "tsx src/jobs/backfill.ts",
-    "headers": "tsx src/jobs/headers.ts"
+    "headers": "tsx src/jobs/headers.ts",
+    "lint": "eslint src",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "@graphql-yoga/plugin-persisted-operations": "^4.0.1",
@@ -37,7 +39,10 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.6",
+    "@typescript-eslint/parser": "^8.72.2",
+    "eslint": "^10.14.0",
+    "eslint-plugin-jsdoc": "^65.4.5",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
+    "typescript": "~6.0"
   }
 }

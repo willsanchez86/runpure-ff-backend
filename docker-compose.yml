@@ -1,14 +1,19 @@
+# Local development database only. Settings come from .env (git-ignored).
 services:
   mysql:
-    image: mysql:lts
+    # Pinned: mysql:lts now tracks 9.7; the project uses 8.4 (ETL spec §7.3).
+    image: mysql:8.4
     container_name: runpure-mysql
+    # Read only on first start. To change them later: docker compose down -v (deletes data).
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: runpure
-      MYSQL_USER: runpure
-      MYSQL_PASSWORD: runpure
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?set MYSQL_DATABASE in .env}
+      MYSQL_USER: ${MYSQL_USER:?set MYSQL_USER in .env}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
+    # This computer only.
     ports:
-      - "3306:3306"
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
+    # Data survives restarts; only "docker compose down -v" deletes it.
     volumes:
       - mysql-data:/var/lib/mysql
 

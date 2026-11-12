@@ -1,7 +1,9 @@
+/** Pothos schema builder and the per-request context (ADR-0017 items 1, 8, 11). */
 import SchemaBuilder from '@pothos/core';
 import ScopeAuthPlugin from '@pothos/plugin-scope-auth';
 import type { AppUser } from '../modules/account/model/user.model.js';
 
+/** Context passed to every resolver. */
 export interface GraphQLContext {
   /** Set by the token middleware before the request reaches GraphQL (ADR-0017 item 2). */
   user: AppUser;

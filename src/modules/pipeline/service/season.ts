@@ -1,3 +1,4 @@
+/** Current-season rule (ETL spec D6) and the seasons each run loads (ADR-0006, ADR-0013). */
 import { env } from '../../../config/env.js';
 import type { DatasetDef, SeasonRollover } from './datasets.js';
 import type { JobKind } from '../model/pipeline.model.js';
@@ -31,6 +32,7 @@ export function currentSeason(rollover: SeasonRollover = 'season_opener', now: D
   return today >= switchDate ? year : year - 1;
 }
 
+/** Season range for a backfill. */
 export interface SeasonRange {
   from: number;
   /** Default: the dataset's current season. */

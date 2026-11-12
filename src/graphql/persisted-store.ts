@@ -1,3 +1,4 @@
+/** Loads the trusted documents the GraphQL endpoint accepts (ADR-0016 item 3). */
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Blocks the commit when lint or the type-check fails. Enabled by "npm install" (prepare script).
+npm run -s lint && npm run -s typecheck

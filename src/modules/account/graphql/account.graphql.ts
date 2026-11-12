@@ -1,3 +1,4 @@
+/** GraphQL field `me`: the signed-in account (ADR-0015). */
 import { builder } from '../../../graphql/builder.js';
 import type { AppUser } from '../model/user.model.js';
 

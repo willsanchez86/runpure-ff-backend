@@ -1,3 +1,4 @@
+/** Loads one piece through a staging table (ADR-0006; ETL spec §5.3). */
 import type { Pool } from 'mysql2/promise';
 import { env } from '../../../config/env.js';
 import type { ColumnSpec, DatasetDef } from './datasets.js';
@@ -5,6 +6,7 @@ import type { ColumnSpec, DatasetDef } from './datasets.js';
 /** CSV tokens treated as NULL. nflverse files are written from R, which uses "NA". */
 const NULL_TOKENS = new Set(['', 'NA']);
 
+/** Converts one CSV value: NULL tokens to null, then the optional cast. */
 function convert(value: string | undefined, spec: ColumnSpec): unknown {
   if (value === undefined || NULL_TOKENS.has(value)) return null;
   if (typeof spec === 'string') return value;

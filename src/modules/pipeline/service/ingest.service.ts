@@ -1,3 +1,4 @@
+/** One pipeline run: lock, ledger, piece-by-piece load (ADR-0006). */
 import { getPool } from '../../../db/pool.js';
 import { releaseLock, tryAcquireLock } from '../../../db/lock.js';
 import {
@@ -13,6 +14,7 @@ import { loadPiece } from './load.service.js';
 import { headSource, openCsv, sourceUrl } from './nflverse.service.js';
 import { seasonsToLoad, type SeasonRange } from './season.js';
 
+/** What one run loads. */
 export interface RunOptions {
   kind: JobKind;
   /** Limit to these dataset names. Default: all. */
@@ -23,6 +25,7 @@ export interface RunOptions {
   force?: boolean;
 }
 
+/** What one run did, for logs and the CLI. */
 export interface RunSummary {
   jobRunId: number | null;
   outcome: JobOutcome;

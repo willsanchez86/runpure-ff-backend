@@ -16,7 +16,10 @@ function standInUser(req: Request, _res: Response, next: NextFunction): void {
 
 const app = express();
 const yoga = createGraphQLServer({ allowArbitraryOperations: true });
-app.use(yoga.graphqlEndpoint, standInUser, yoga);
+// Wrapped as in src/routes/index.ts: Yoga's call signatures don't fit Express 5's overloads.
+app.use(yoga.graphqlEndpoint, standInUser, async (req: Request, res: Response) => {
+  await yoga(req, res);
+});
 
 const server = app.listen(0);
 await new Promise<void>((resolve) => server.once('listening', () => resolve()));

@@ -1,3 +1,4 @@
+/** In-process schedule for the daily ingest run (ADR-0008; ETL spec D7, D12). */
 import { schedule, validate, type ScheduledTask } from 'node-cron';
 import { env } from '../config/env.js';
 import { runPipeline } from '../modules/pipeline/service/ingest.service.js';
@@ -11,6 +12,7 @@ import { runPipeline } from '../modules/pipeline/service/ingest.service.js';
 let stopping = false;
 const tasks: ScheduledTask[] = [];
 
+/** Starts one cron task per PIPELINE_CRON expression; throws on an invalid expression. */
 export function startScheduler(): void {
   for (const expression of env.cronSchedules) {
     if (!validate(expression)) throw new Error(`invalid cron expression in PIPELINE_CRON: "${expression}"`);
@@ -32,6 +34,7 @@ export function startScheduler(): void {
   }
 }
 
+/** Stops every task. A run already in progress finishes; no new run starts. */
 export function stopScheduler(): void {
   stopping = true;
   for (const task of tasks) task.stop();

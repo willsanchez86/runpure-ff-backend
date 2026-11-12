@@ -1,3 +1,4 @@
+/** Firebase ID-token check in front of the GraphQL endpoint (ADR-0015; ADR-0017 item 2). */
 import type { NextFunction, Request, Response } from 'express';
 import { applicationDefault, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
@@ -5,7 +6,6 @@ import { getPool } from '../db/pool.js';
 import { findUserByFirebaseUid, type AppUser } from '../modules/account/model/user.model.js';
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       /** The signed-in account, set by requireUser. */

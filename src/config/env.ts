@@ -1,5 +1,7 @@
+/** Environment settings, read and validated once at startup (see .env.example). */
 import 'dotenv/config';
 
+/** Reads a numeric variable, or the fallback when unset; throws on a non-number. */
 function num(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw === '') return fallback;
@@ -14,6 +16,7 @@ if (production && allowArbitrary) {
   throw new Error('GRAPHQL_ALLOW_ARBITRARY must not be set in production (ADR-0017 item 9)');
 }
 
+/** Validated settings; DATABASE_URL is read only when first needed. */
 export const env = {
   port: num('PORT', 4000),
   production,

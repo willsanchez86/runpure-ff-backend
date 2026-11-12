@@ -1,8 +1,7 @@
+/** Operator-only GraphQL fields pipelineRuns and ingestLedger (ADR-0017 item 11). */
 import { getPool } from '../../../db/pool.js';
 import { builder } from '../../../graphql/builder.js';
 import { listLedger, recentJobRuns, type JobRunRow, type LedgerRow } from '../model/pipeline.model.js';
-
-// Operator fields (ADR-0017 item 11): readable only by accounts with users.is_operator.
 
 const iso = (value: Date | null): string | null => (value ? value.toISOString() : null);
 

@@ -1,3 +1,4 @@
+/** GraphQL Yoga server with trusted documents and operation logging (ADR-0017 items 5, 7, 9). */
 import type { Request, Response } from 'express';
 import { createYoga, type Plugin } from 'graphql-yoga';
 import { usePersistedOperations } from '@graphql-yoga/plugin-persisted-operations';
@@ -26,6 +27,7 @@ const logOperations: Plugin = {
   },
 };
 
+/** Options for createGraphQLServer. */
 export interface GraphQLServerOptions {
   /** Accept operations outside the trusted documents. Default: env (local dev only). */
   allowArbitraryOperations?: boolean;
@@ -41,6 +43,9 @@ export function createGraphQLServer(options: GraphQLServerOptions = {}) {
     graphqlEndpoint: '/graphql',
     // GraphiQL sends arbitrary operations, which trusted documents refuse.
     graphiql: false,
+    // CORS is set by the cors middleware (src/routes/index.ts). Yoga's own CORS, on by
+    // default, would overwrite it with whatever origin the request names (ADR-0014).
+    cors: false,
     context: ({ req }) => {
       if (!req.user) throw new Error('GraphQL reached without a signed-in user');
       return { user: req.user };
