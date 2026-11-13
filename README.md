@@ -40,8 +40,9 @@ src/
       service/
         datasets.ts          nflverse dataset registry + column mappings
         season.ts            current season (D6); which seasons each run loads
-        nflverse.service.ts  HEAD for version, streamed CSV download
-        load.service.ts      staging table -> swap in one transaction
+        nflverse.service.ts  version HEAD + guarded streamed download (host allowlist, timeouts, caps)
+        load.service.ts      TEMPORARY staging -> swap in one transaction; §8 row-count block
+        validate.service.ts  header check, drop/dedupe, reference + row-count warnings (§8)
         ingest.service.ts    one pipeline run (lock, ledger, per-piece load)
       graphql/               pipelineRuns, ingestLedger (operator accounts only)
   scheduler/index.ts         cron schedule that calls the ingest entry point
@@ -61,6 +62,7 @@ npm run ingest       one incremental run now (current season only)
 npm run backfill     one-time history load: -- --from 2022 --to 2026 [--dataset name]
 npm run typecheck    tsc --noEmit
 npm run lint         ESLint: JSDoc required on exports (also runs before each commit and in CI)
+npm test             node:test: unit tests always; DB-gated integration tests when TEST_DATABASE_URL is set
 npm run build && npm start
 ```
 
@@ -86,4 +88,12 @@ Datasets without a mapping are skipped and reported.
 - Current season (D6): rosters switch to the new season on March 15; every other
   seasonal dataset on the Wednesday after Labor Day. `CURRENT_SEASON` overrides both.
 - Empty strings and `NA` become NULL.
-- Not built yet: the checks that block or warn on a load (ETL spec §8, D10).
+- Validation (ETL spec §8): the file header must contain the mapped columns (injuries accepts both of
+  its headers); rows with an empty natural key are dropped and injuries deduped (latest `date_modified`
+  wins, else last in file); a sharp row-count drop blocks the load before the swap
+  (`ROW_COUNT_MIN_RATIO`, default 0.5); player/game references with no parent row and row-count drops
+  are warnings recorded in `job_run.error`.
+- Download hardening (ETL spec §4.2): redirects are followed by hand against an https host allowlist
+  (`RELEASE_HOST_ALLOWLIST`), with header and inter-chunk idle timeouts and download/gzip-decompression
+  byte caps; the source base is `RELEASE_BASE`. Staging is a session `TEMPORARY` table discarded on
+  connection close.
