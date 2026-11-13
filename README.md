@@ -117,3 +117,27 @@ branch in the engine.
   (`RELEASE_HOST_ALLOWLIST`), with header and inter-chunk idle timeouts and download/gzip-decompression
   byte caps; the source base is `RELEASE_BASE`. Staging is a session `TEMPORARY` table discarded on
   connection close.
+
+## Scheduled ingest
+
+New data arrives two ways: the one-time `npm run backfill` loads history once, then a
+daily scheduled `ingest` keeps the current season fresh (ETL spec D7, D12).
+
+- **When:** once a day at `PIPELINE_CRON` (default `0 6 * * *`, i.e. 06:00) in `PIPELINE_TZ`
+  (default `America/New_York`, so 06:00 Eastern, tracking EST/EDT). Both are overridable.
+- **Where:** the scheduler runs inside the server process (`npm run dev`, or the deployed
+  server). No running server means no automatic run; trigger one by hand with `npm run ingest`,
+  or point an external cron at that command.
+- **What it loads:** the current season only for `history` and `current_season` datasets, the
+  whole file for `single_file` datasets. A piece whose source ETag matches the ledger's last
+  successful load is skipped, so a normal day reloads only the files nflverse republished.
+- **Season rollover is automatic:** rosters switch to the new season on March 15, every other
+  seasonal dataset on the Wednesday after Labor Day (`CURRENT_SEASON` overrides).
+- **Overlap:** a MySQL `GET_LOCK` run lock means a second run exits `skipped_locked` rather than
+  running concurrently.
+- **Idempotent:** a load replaces rows, it never appends — one transaction deletes the rows being
+  replaced (that season, or the whole table) and inserts the staged rows, and `teams` upserts.
+  Re-running a backfill or ingest overwrites the same rows, so it is always safe to run again.
+
+Finished seasons are not re-fetched daily; to correct an old season, run a targeted backfill
+(`npm run backfill -- --from 2024 --to 2024`).
