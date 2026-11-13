@@ -18,6 +18,7 @@
     "backfill": "tsx src/jobs/backfill.ts",
     "headers": "tsx src/jobs/headers.ts",
     "lint": "eslint src",
+    "test": "tsx --test \"src/**/*.test.ts\"",
     "prepare": "git config core.hooksPath .githooks"
   },
   "dependencies": {
