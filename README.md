@@ -51,6 +51,10 @@ sql/                         hand-applied schema statements, in order
 persisted/                   trusted documents
 ```
 
+Dependencies run one way: `jobs -> modules/*/service -> modules/*/model -> db`, with
+`config/env.ts` and `datasets.ts` the leaves everything reads. Nothing imports upward;
+an upward import is the first sign the layering is breaking.
+
 ## Commands
 
 ```
@@ -66,6 +70,9 @@ npm test             node:test: unit tests always; DB-gated integration tests wh
 npm run build && npm start
 ```
 
+`lint` runs before each commit and in CI; `test` does not yet run in CI, so run
+`npm test` locally before pushing a pipeline change.
+
 ## Mapping a dataset
 
 1. `npm run headers -- --dataset stats_player_week` to see the columns.
@@ -75,6 +82,19 @@ npm run build && npm start
 4. `npm run ingest -- --dataset stats_player_week`.
 
 Datasets without a mapping are skipped and reported.
+
+To change an existing table (a column added, renamed or retyped upstream), edit its
+`sql/` file and apply the change by hand; `sql/README.md` covers `ALTER` vs
+drop-and-recreate. Keep three places in step: the DDL in `sql/`, the mapping in
+`datasets.ts`, and the data dictionary in `runpure-ff-planning`. Two guards catch drift
+on the next run: the §8 header check fails a load whose file is missing a mapped column,
+and staging is built `CREATE TEMPORARY TABLE ... LIKE <table>`, so the live table is the
+type contract and a mapped column absent from it fails the load.
+
+`datasets.ts` is the one place a dataset's shape is described; keep the
+download/validate/load services generic. A dataset-specific need (an optional column, a
+dedupe tiebreaker, a reference to check) belongs in its `DatasetDef` metadata, never a
+branch in the engine.
 
 ## Load rules
 
