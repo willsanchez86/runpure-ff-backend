@@ -18,18 +18,23 @@ const id = (name: string): string => `\`${name.replace(/`/g, '``')}\``;
 
 /**
  * Loads one piece (dataset x season) into its table:
- *   1. rows stream into `<table>__staging` in batches;
+ *   1. rows stream into a session-scoped `<table>__staging` TEMPORARY table in batches;
  *   2. one transaction deletes the rows being replaced and copies staging in, or, for
  *      an upsert dataset (the team table), inserts new rows and updates existing ones;
  *   3. staging is dropped.
- * A crash before step 2 leaves the target untouched; the next run drops the leftover
- * staging table and starts again (ADR-0006).
+ * A crash before step 2 leaves the target untouched; the TEMPORARY staging is discarded when the
+ * connection closes, and an errored load destroys its connection so nothing lingers (ADR-0006).
+ * A load whose staged row count falls below
+ * `previousRows * env.rowCountMinRatio` is blocked before the swap (§8), keeping the previous data.
+ *
+ * `previousRows` is the last successful load's row count for this piece, or null when there is none.
  */
 export async function loadPiece(
   pool: Pool,
   def: DatasetDef,
   season: number,
   records: AsyncIterable<Record<string, string>>,
+  previousRows: number | null = null,
 ): Promise<number> {
   if (!def.table || !def.columns) {
     throw new Error(`dataset ${def.name} has no table/columns mapping`);
@@ -45,9 +50,11 @@ export async function loadPiece(
   const seasonColumn = def.seasonColumn ?? 'season';
 
   const conn = await pool.getConnection();
+  let ok = false;
   try {
-    await conn.query('DROP TABLE IF EXISTS ??', [staging]);
-    await conn.query('CREATE TABLE ?? LIKE ??', [staging, table]);
+    // Session-scoped staging: invisible to other connections and discarded when this one closes.
+    await conn.query('DROP TEMPORARY TABLE IF EXISTS ??', [staging]);
+    await conn.query('CREATE TEMPORARY TABLE ?? LIKE ??', [staging, table]);
 
     let batch: unknown[][] = [];
     let total = 0;
@@ -64,6 +71,15 @@ export async function loadPiece(
     }
     await flush();
 
+    // Structural check (§8): block a load whose row count fell sharply, keeping the previous data.
+    if (previousRows !== null && previousRows > 0 && total < previousRows * env.rowCountMinRatio) {
+      await conn.query('DROP TEMPORARY TABLE IF EXISTS ??', [staging]);
+      throw new Error(
+        `${def.name} ${season}: staged ${total} rows, below the ` +
+          `${Math.floor(previousRows * env.rowCountMinRatio)} needed (${previousRows} previously); load blocked`,
+      );
+    }
+
     await conn.beginTransaction();
     try {
       if (def.replace === 'upsert') {
@@ -74,7 +90,8 @@ export async function loadPiece(
           `INSERT INTO ${id(table)} (${cols}) SELECT ${cols} FROM ${id(staging)} AS s ON DUPLICATE KEY UPDATE ${updates}`,
         );
         await conn.commit();
-        await conn.query('DROP TABLE IF EXISTS ??', [staging]);
+        await conn.query('DROP TEMPORARY TABLE IF EXISTS ??', [staging]);
+        ok = true;
         return total;
       }
       if (def.scope === 'history') {
@@ -90,9 +107,13 @@ export async function loadPiece(
       throw err;
     }
 
-    await conn.query('DROP TABLE IF EXISTS ??', [staging]);
+    await conn.query('DROP TEMPORARY TABLE IF EXISTS ??', [staging]);
+    ok = true;
     return total;
   } finally {
-    conn.release();
+    // On error, destroy rather than release: a closed connection can't carry a leftover temp table
+    // back into the pool to collide with the next load.
+    if (ok) conn.release();
+    else conn.destroy();
   }
 }

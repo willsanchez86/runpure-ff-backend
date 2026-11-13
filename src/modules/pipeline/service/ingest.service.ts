@@ -13,6 +13,7 @@ import { datasets } from './datasets.js';
 import { loadPiece } from './load.service.js';
 import { headSource, openCsv, sourceUrl } from './nflverse.service.js';
 import { seasonsToLoad, type SeasonRange } from './season.js';
+import { countMissingReferences, prepareRecords } from './validate.service.js';
 
 /** What one run loads. */
 export interface RunOptions {
@@ -33,6 +34,8 @@ export interface RunSummary {
   skipped: number;
   failed: number;
   details: string[];
+  /** Non-blocking value-check findings (§8), recorded in job_run.error with a WARNINGS: prefix. */
+  warnings: string[];
 }
 
 /**
@@ -43,7 +46,7 @@ export interface RunSummary {
  */
 export async function runPipeline(opts: RunOptions): Promise<RunSummary> {
   const pool = getPool();
-  const summary: RunSummary = { jobRunId: null, outcome: 'running', loaded: 0, skipped: 0, failed: 0, details: [] };
+  const summary: RunSummary = { jobRunId: null, outcome: 'running', loaded: 0, skipped: 0, failed: 0, details: [], warnings: [] };
 
   const lockConn = await pool.getConnection();
   try {
@@ -92,12 +95,26 @@ export async function runPipeline(opts: RunOptions): Promise<RunSummary> {
             contentLength: version.contentLength,
           };
           await upsertLedger(pool, { ...base, status: 'downloading' });
-          const records = await openCsv(url, def.gzip);
-          const rows = await loadPiece(pool, def, season, records);
+          const raw = await openCsv(url, def.gzip);
+          // Validate the header (blocks on mismatch) and drop/dedupe rows before loading (§8, §7.2.3).
+          const { records, stats } = await prepareRecords(def, raw);
+          const previousRows = previous?.status === 'loaded' ? previous.rows_loaded : null;
+          const rows = await loadPiece(pool, def, season, records, previousRows);
           await upsertLedger(pool, { ...base, status: 'loaded', rowsLoaded: rows, error: null });
 
           summary.loaded++;
-          summary.details.push(`${label}: loaded ${rows} rows`);
+          let detail = `${label}: loaded ${rows} rows`;
+          if (stats.dropped) detail += `, dropped ${stats.dropped} (empty key)`;
+          if (stats.deduped) detail += `, deduped ${stats.deduped}`;
+          summary.details.push(detail);
+
+          // Value checks (§8): warn, never block.
+          if (stats.dedupedNoTiebreaker) {
+            summary.warnings.push(
+              `${label}: ${stats.dedupedNoTiebreaker} duplicate key(s) kept by file order (no date_modified)`,
+            );
+          }
+          summary.warnings.push(...(await countMissingReferences(pool, def, season)));
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           summary.failed++;
@@ -117,7 +134,8 @@ export async function runPipeline(opts: RunOptions): Promise<RunSummary> {
     }
 
     summary.outcome = summary.failed > 0 ? 'failed' : 'ok';
-    await finishJobRun(pool, summary.jobRunId, summary.outcome, summary);
+    const errorText = summary.warnings.length ? `WARNINGS:\n${summary.warnings.join('\n')}` : null;
+    await finishJobRun(pool, summary.jobRunId, summary.outcome, summary, errorText);
     return summary;
   } finally {
     await releaseLock(lockConn).catch(() => undefined);

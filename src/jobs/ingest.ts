@@ -12,6 +12,7 @@ const { values } = parseArgs({
 
 const summary = await runPipeline({ kind: 'ingest', datasets: values.dataset, force: values.force ?? false });
 for (const line of summary.details) console.log(line);
+for (const warning of summary.warnings) console.log(`WARN ${warning}`);
 console.log(`job_run ${summary.jobRunId}: ${summary.outcome} (loaded ${summary.loaded}, skipped ${summary.skipped}, failed ${summary.failed})`);
 await closePool();
 process.exitCode = summary.outcome === 'failed' ? 1 : 0;

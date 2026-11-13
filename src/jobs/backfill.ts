@@ -27,6 +27,7 @@ if (!Number.isInteger(from) || (to !== undefined && (!Number.isInteger(to) || fr
 console.log(`backfill ${from}..${to ?? 'current season'}`);
 const summary = await runPipeline({ kind: 'backfill', datasets: values.dataset, range: { from, to }, force: values.force ?? false });
 for (const line of summary.details) console.log(line);
+for (const warning of summary.warnings) console.log(`WARN ${warning}`);
 console.log(`job_run ${summary.jobRunId}: ${summary.outcome} (loaded ${summary.loaded}, skipped ${summary.skipped}, failed ${summary.failed})`);
 await closePool();
 process.exitCode = summary.outcome === 'failed' ? 1 : 0;

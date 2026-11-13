@@ -43,4 +43,22 @@ export const env = {
   currentSeasonOverride: process.env.CURRENT_SEASON ? num('CURRENT_SEASON', 0) : undefined,
   historyStartSeason: num('HISTORY_START_SEASON', 2022),
   loadBatchSize: num('LOAD_BATCH_SIZE', 1000),
+  /** A load whose staged row count is below (prior rows x this) is blocked (ETL spec §8). */
+  rowCountMinRatio: num('ROW_COUNT_MIN_RATIO', 0.5),
+
+  /** Base URL of nflverse release files; configurable so a mirror needs no redeploy (ETL spec §4.1). */
+  releaseBase: process.env.RELEASE_BASE ?? 'https://github.com/nflverse/nflverse-data/releases/download',
+  /** Hosts the downloader may fetch from, including every redirect hop (SSRF guard, ETL spec §4.2). */
+  releaseHostAllowlist: (process.env.RELEASE_HOST_ALLOWLIST ?? 'github.com,githubusercontent.com')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+  /** Abort a download whose response headers don't arrive within this many ms. */
+  downloadHeaderTimeoutMs: num('DOWNLOAD_HEADER_TIMEOUT_MS', 30000),
+  /** Abort a download that goes this many ms with no data (stall guard, not a whole-download deadline). */
+  downloadIdleTimeoutMs: num('DOWNLOAD_IDLE_TIMEOUT_MS', 60000),
+  /** Abort a download exceeding this many bytes. */
+  maxDownloadBytes: num('MAX_DOWNLOAD_BYTES', 1_073_741_824),
+  /** Abort a gzip stream decompressing beyond this many bytes (decompression-bomb guard). */
+  maxDecompressedBytes: num('MAX_DECOMPRESSED_BYTES', 1_073_741_824),
 };
