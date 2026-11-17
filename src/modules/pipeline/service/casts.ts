@@ -9,6 +9,6 @@
  * being silently altered. Empty/`NA` never reach a cast — `load.service.ts` maps those to NULL first.
  */
 export function toUtcDateTime(value: string): string {
-  const m = value.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
-  return m ? `${m[1]} ${m[2]}` : value;
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
+  return match ? `${match[1]} ${match[2]}` : value;
 }

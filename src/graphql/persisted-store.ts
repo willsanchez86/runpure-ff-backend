@@ -18,7 +18,7 @@ export function loadPersistedStore(dir = 'persisted'): Map<string, string> {
 
   const operatorDir = join(dir, 'operator');
   if (existsSync(operatorDir)) {
-    for (const file of readdirSync(operatorDir).filter((f) => f.endsWith('.graphql'))) {
+    for (const file of readdirSync(operatorDir).filter((fileName) => fileName.endsWith('.graphql'))) {
       const document = readFileSync(join(operatorDir, file), 'utf8');
       const hash = createHash('sha256').update(document).digest('hex');
       store.set(hash, document);

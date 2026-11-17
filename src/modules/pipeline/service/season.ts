@@ -57,7 +57,7 @@ export function seasonsToLoad(def: DatasetDef, kind: JobKind, range?: SeasonRang
       const from = range?.from ?? env.historyStartSeason;
       const to = range?.to ?? current;
       const seasons: number[] = [];
-      for (let s = from; s <= to; s++) seasons.push(s);
+      for (let year = from; year <= to; year++) seasons.push(year);
       return seasons;
     }
   }

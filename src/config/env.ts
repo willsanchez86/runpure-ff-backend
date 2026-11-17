@@ -5,9 +5,9 @@ import 'dotenv/config';
 function num(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw === '') return fallback;
-  const n = Number(raw);
-  if (!Number.isFinite(n)) throw new Error(`${name} must be a number, got "${raw}"`);
-  return n;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) throw new Error(`${name} must be a number, got "${raw}"`);
+  return parsed;
 }
 
 const production = process.env.NODE_ENV === 'production';
@@ -37,7 +37,7 @@ export const env = {
   timezone: process.env.PIPELINE_TZ ?? 'America/New_York',
   cronSchedules: (process.env.PIPELINE_CRON ?? '0 6 * * *')
     .split(';')
-    .map((s) => s.trim())
+    .map((entry) => entry.trim())
     .filter(Boolean),
 
   currentSeasonOverride: process.env.CURRENT_SEASON ? num('CURRENT_SEASON', 0) : undefined,
@@ -51,7 +51,7 @@ export const env = {
   /** Hosts the downloader may fetch from, including every redirect hop (SSRF guard, ETL spec §4.2). */
   releaseHostAllowlist: (process.env.RELEASE_HOST_ALLOWLIST ?? 'github.com,githubusercontent.com')
     .split(',')
-    .map((s) => s.trim())
+    .map((entry) => entry.trim())
     .filter(Boolean),
   /** Abort a download whose response headers don't arrive within this many ms. */
   downloadHeaderTimeoutMs: num('DOWNLOAD_HEADER_TIMEOUT_MS', 30000),

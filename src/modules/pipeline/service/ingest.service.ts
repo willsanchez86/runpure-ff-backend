@@ -60,7 +60,7 @@ export async function runPipeline(opts: RunOptions): Promise<RunSummary> {
     }
 
     summary.jobRunId = await startJobRun(pool, opts.kind);
-    const selected = datasets.filter((d) => !opts.datasets || opts.datasets.includes(d.name));
+    const selected = datasets.filter((dataset) => !opts.datasets || opts.datasets.includes(dataset.name));
 
     for (const def of selected) {
       if (!def.table || !def.columns) {
@@ -128,7 +128,9 @@ export async function runPipeline(opts: RunOptions): Promise<RunSummary> {
             contentLength: null,
             status: 'failed',
             error: message,
-          }).catch((e) => console.error('could not record failure in ledger', e));
+          }).catch((ledgerError) =>
+            console.error('could not record failure in ledger', ledgerError),
+          );
         }
       }
     }

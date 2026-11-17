@@ -18,7 +18,7 @@ const logOperations: Plugin = {
       onExecuteDone({ result }) {
         if (Symbol.asyncIterator in result) return;
         if (result.errors?.length) {
-          console.error(`graphql ${name}: ${result.errors.length} error(s)`, result.errors.map((e) => e.message));
+          console.error(`graphql ${name}: ${result.errors.length} error(s)`, result.errors.map((gqlError) => gqlError.message));
         } else {
           console.log(`graphql ${name}: ok`);
         }
