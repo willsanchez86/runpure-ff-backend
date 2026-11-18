@@ -72,12 +72,18 @@ export interface TeamRow extends RowDataPacket {
   team_nick: string | null;
   team_conf: string | null;
   team_division: string | null;
+  team_color: string | null;
+  team_logo_squared: string | null;
+  team_logo_espn: string | null;
+  team_logo_wikipedia: string | null;
 }
 
 /** All 32 team reference rows. */
 export async function findTeams(pool: Pool): Promise<TeamRow[]> {
   const [rows] = await pool.query<TeamRow[]>(
-    `SELECT team_abbr, team_name, team_nick, team_conf, team_division FROM team`,
+    `SELECT team_abbr, team_name, team_nick, team_conf, team_division,
+            team_color, team_logo_squared, team_logo_espn, team_logo_wikipedia
+       FROM team`,
   );
   return rows;
 }

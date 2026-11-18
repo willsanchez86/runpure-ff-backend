@@ -229,9 +229,11 @@ type Team {
   abbr: String!
   byeWeek: Int
   city: String!
+  color: String
   conference: String!
   division: String!
   headCoach: String
+  logoUrl: String
   name: String!
   nickname: String!
   roof: String
