@@ -24,7 +24,9 @@ export function assertHeader(def: DatasetDef, header: readonly string[]): void {
   if (!def.columns) return;
   const present = new Set(header);
   const optional = new Set(def.optionalColumns ?? []);
-  const missing = Object.keys(def.columns).filter((c) => !present.has(c) && !optional.has(c));
+  const missing = Object.keys(def.columns).filter(
+    (column) => !present.has(column) && !optional.has(column),
+  );
   if (missing.length) {
     throw new Error(`${def.name}: file header is missing mapped column(s): ${missing.join(', ')}`);
   }
@@ -79,10 +81,11 @@ export async function* sanitize(
       continue;
     }
     stats.deduped++;
-    const a = existing[by] ?? '';
-    const b = row[by] ?? '';
-    if (a === '' && b === '') stats.dedupedNoTiebreaker++;
-    if (b >= a) kept.set(key, row); // greater timestamp wins; both empty -> later row wins (owner)
+    const existingStamp = existing[by] ?? '';
+    const incomingStamp = row[by] ?? '';
+    if (existingStamp === '' && incomingStamp === '') stats.dedupedNoTiebreaker++;
+    // greater timestamp wins; both empty -> later row wins (owner)
+    if (incomingStamp >= existingStamp) kept.set(key, row);
   }
   for (const row of kept.values()) yield row;
 }
@@ -141,9 +144,11 @@ export async function countMissingReferences(pool: Pool, def: DatasetDef, season
         WHERE ${where.join(' AND ')}`,
       params,
     );
-    const n = Number(rows[0]?.n ?? 0);
-    if (n > 0) {
-      warnings.push(`${def.name} ${season}: ${n} row(s) with ${ref.column} not in ${ref.table}.${ref.parentColumn}`);
+    const orphanCount = Number(rows[0]?.n ?? 0);
+    if (orphanCount > 0) {
+      warnings.push(
+        `${def.name} ${season}: ${orphanCount} row(s) with ${ref.column} not in ${ref.table}.${ref.parentColumn}`,
+      );
     }
   }
   return warnings;

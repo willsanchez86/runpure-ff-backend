@@ -43,8 +43,8 @@ export async function loadPiece(
   const columns = def.columns;
   const staging = `${table}__staging`;
   const csvColumns = Object.keys(columns);
-  const targetColumns = csvColumns.map((c) => {
-    const spec = columns[c];
+  const targetColumns = csvColumns.map((column) => {
+    const spec = columns[column];
     return typeof spec === 'string' ? spec : spec.to;
   });
   const seasonColumn = def.seasonColumn ?? 'season';
@@ -66,7 +66,9 @@ export async function loadPiece(
     };
 
     for await (const record of records) {
-      batch.push(csvColumns.map((c) => convert(record[c], columns[c])));
+      batch.push(
+        csvColumns.map((column) => convert(record[column], columns[column])),
+      );
       if (batch.length >= env.loadBatchSize) await flush();
     }
     await flush();
@@ -84,7 +86,9 @@ export async function loadPiece(
     try {
       if (def.replace === 'upsert') {
         // Nothing is deleted: other tables' foreign keys still reference these rows.
-        const updates = targetColumns.map((c) => `${id(c)} = s.${id(c)}`).join(', ');
+        const updates = targetColumns
+          .map((column) => `${id(column)} = s.${id(column)}`)
+          .join(', ');
         const cols = targetColumns.map(id).join(', ');
         await conn.query(
           `INSERT INTO ${id(table)} (${cols}) SELECT ${cols} FROM ${id(staging)} AS s ON DUPLICATE KEY UPDATE ${updates}`,

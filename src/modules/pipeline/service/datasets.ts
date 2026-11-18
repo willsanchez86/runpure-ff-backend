@@ -95,20 +95,20 @@ export const datasets: DatasetDef[] = [
     table: 'team', columns: columnsFor(TEAM_COLUMNS), naturalKey: ['team_abbr'] },
 
   // Weekly player and team stat lines (nflfastR::calculate_stats). Every season from 2022.
-  { name: 'stats_player_week', scope: 'history', path: (s) => `stats_player/stats_player_week_${s}.csv`,
+  { name: 'stats_player_week', scope: 'history', path: (season) => `stats_player/stats_player_week_${season}.csv`,
     table: 'player_week_stat', columns: columnsFor(PLAYER_WEEK_STAT_COLUMNS),
     naturalKey: ['season', 'season_type', 'week', 'player_id'],
     references: [
       { column: 'player_id', table: 'player', parentColumn: 'gsis_id' },
       { column: 'game_id', table: 'game', parentColumn: 'game_id' },
     ] },
-  { name: 'stats_team_week', scope: 'history', path: (s) => `stats_team/stats_team_week_${s}.csv`,
+  { name: 'stats_team_week', scope: 'history', path: (season) => `stats_team/stats_team_week_${season}.csv`,
     table: 'team_week_stat', columns: columnsFor(TEAM_WEEK_STAT_COLUMNS),
     naturalKey: ['season', 'season_type', 'week', 'team'],
     references: [{ column: 'game_id', table: 'game', parentColumn: 'game_id' }] },
 
   // Season rosters: the new season is published from March 15 (D6).
-  { name: 'rosters', scope: 'history', rollover: 'march_15', path: (s) => `rosters/roster_${s}.csv`,
+  { name: 'rosters', scope: 'history', rollover: 'march_15', path: (season) => `rosters/roster_${season}.csv`,
     table: 'roster', columns: columnsFor(ROSTER_COLUMNS),
     naturalKey: ['season', 'team', 'gsis_id'],
     references: [{ column: 'gsis_id', table: 'player', parentColumn: 'gsis_id' }] },
@@ -116,14 +116,14 @@ export const datasets: DatasetDef[] = [
   // Snap counts and official injury reports. Injuries has two headers (2022-2024 date_modified,
   // 2025+ season_type), both mapped; date_modified is cast to MySQL DATETIME (§7.2). A repeated
   // injury key keeps the latest date_modified, or the last row in file order for 2025+ (§8).
-  { name: 'snap_counts', scope: 'history', path: (s) => `snap_counts/snap_counts_${s}.csv`,
+  { name: 'snap_counts', scope: 'history', path: (season) => `snap_counts/snap_counts_${season}.csv`,
     table: 'snap_count', columns: columnsFor(SNAP_COUNT_COLUMNS),
     naturalKey: ['game_id', 'pfr_player_id'],
     references: [
       { column: 'game_id', table: 'game', parentColumn: 'game_id' },
       { column: 'pfr_player_id', table: 'player', parentColumn: 'pfr_id' },
     ] },
-  { name: 'injuries', scope: 'history', path: (s) => `injuries/injuries_${s}.csv`,
+  { name: 'injuries', scope: 'history', path: (season) => `injuries/injuries_${season}.csv`,
     table: 'injury_report', columns: columnsFor(INJURY_REPORT_COLUMNS, { date_modified: toUtcDateTime }),
     naturalKey: ['season', 'week', 'game_type', 'team', 'gsis_id'],
     optionalColumns: ['date_modified', 'season_type'], dedupeBy: 'date_modified',
@@ -137,11 +137,11 @@ export const datasets: DatasetDef[] = [
     table: 'player', columns: columnsFor(PLAYER_COLUMNS), naturalKey: ['gsis_id'] },
 
   // Current season only (ADR-0013). Play-by-play uses the gzip file. ISO timestamps cast to DATETIME.
-  { name: 'depth_charts', scope: 'current_season', path: (s) => `depth_charts/depth_charts_${s}.csv`,
+  { name: 'depth_charts', scope: 'current_season', path: (season) => `depth_charts/depth_charts_${season}.csv`,
     table: 'depth_chart', columns: columnsFor(DEPTH_CHART_COLUMNS, { dt: toUtcDateTime }),
     naturalKey: ['dt', 'team', 'pos_grp_id', 'pos_slot', 'pos_rank'],
     references: [{ column: 'gsis_id', table: 'player', parentColumn: 'gsis_id' }] },
-  { name: 'pbp', scope: 'current_season', path: (s) => `pbp/play_by_play_${s}.csv.gz`, gzip: true,
+  { name: 'pbp', scope: 'current_season', path: (season) => `pbp/play_by_play_${season}.csv.gz`, gzip: true,
     table: 'play',
     columns: columnsFor(PLAY_COLUMNS, {
       time_of_day: toUtcDateTime,
@@ -154,5 +154,5 @@ export const datasets: DatasetDef[] = [
 
 /** The dataset with this name, if any. */
 export function findDataset(name: string): DatasetDef | undefined {
-  return datasets.find((d) => d.name === name);
+  return datasets.find((dataset) => dataset.name === name);
 }

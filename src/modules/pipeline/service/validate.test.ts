@@ -24,28 +24,28 @@ async function run(
 }
 
 test('assertHeader accepts either injuries header and ignores extra columns', () => {
-  const d = def({ name: 'injuries', columns: { a: 'a', b: 'b', date_modified: 'date_modified', season_type: 'season_type' }, optionalColumns: ['date_modified', 'season_type'] });
-  assert.doesNotThrow(() => assertHeader(d, ['a', 'b', 'date_modified'])); // 2022-2024 header
-  assert.doesNotThrow(() => assertHeader(d, ['a', 'b', 'season_type'])); // 2025+ header
-  assert.doesNotThrow(() => assertHeader(d, ['a', 'b', 'date_modified', 'extra'])); // extra ignored
+  const definition = def({ name: 'injuries', columns: { a: 'a', b: 'b', date_modified: 'date_modified', season_type: 'season_type' }, optionalColumns: ['date_modified', 'season_type'] });
+  assert.doesNotThrow(() => assertHeader(definition, ['a', 'b', 'date_modified'])); // 2022-2024 header
+  assert.doesNotThrow(() => assertHeader(definition, ['a', 'b', 'season_type'])); // 2025+ header
+  assert.doesNotThrow(() => assertHeader(definition, ['a', 'b', 'date_modified', 'extra'])); // extra ignored
 });
 
 test('assertHeader blocks when a required mapped column is missing', () => {
-  const d = def({ name: 't', columns: { a: 'a', b: 'b' } });
-  assert.throws(() => assertHeader(d, ['a']), /missing mapped column\(s\): b/);
+  const definition = def({ name: 't', columns: { a: 'a', b: 'b' } });
+  assert.throws(() => assertHeader(definition, ['a']), /missing mapped column\(s\): b/);
 });
 
 test('sanitize drops rows whose natural key is empty or NA', async () => {
-  const d = def({ name: 't', naturalKey: ['k'] });
-  const { out, stats } = await run(d, [{ k: '1' }, { k: '' }, { k: 'NA' }, { k: '2' }]);
-  assert.deepEqual(out.map((r) => r.k), ['1', '2']);
+  const definition = def({ name: 't', naturalKey: ['k'] });
+  const { out, stats } = await run(definition, [{ k: '1' }, { k: '' }, { k: 'NA' }, { k: '2' }]);
+  assert.deepEqual(out.map((row) => row.k), ['1', '2']);
   assert.equal(stats.dropped, 2);
   assert.equal(stats.deduped, 0);
 });
 
 test('sanitize dedupes a repeated key keeping the greatest dedupeBy (latest report wins)', async () => {
-  const d = def({ name: 'injuries', naturalKey: ['k'], dedupeBy: 'ts' });
-  const { out, stats } = await run(d, [
+  const definition = def({ name: 'injuries', naturalKey: ['k'], dedupeBy: 'ts' });
+  const { out, stats } = await run(definition, [
     { k: '1', ts: '2024-09-04T10:00:00Z', v: 'early' },
     { k: '1', ts: '2024-09-06T12:00:00Z', v: 'late' },
   ]);
@@ -56,8 +56,8 @@ test('sanitize dedupes a repeated key keeping the greatest dedupeBy (latest repo
 });
 
 test('sanitize with no dedupeBy value keeps the last row in file order and counts it (2025+ injuries)', async () => {
-  const d = def({ name: 'injuries', naturalKey: ['k'], dedupeBy: 'ts' });
-  const { out, stats } = await run(d, [
+  const definition = def({ name: 'injuries', naturalKey: ['k'], dedupeBy: 'ts' });
+  const { out, stats } = await run(definition, [
     { k: '1', v: 'first' },
     { k: '1', v: 'second' },
   ]);

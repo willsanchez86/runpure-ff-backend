@@ -1,3 +1,75 @@
+"""When each dataset last loaded (drives the freshness/stale UI)."""
+type DataFreshness {
+  gamesLoadedAt: String
+  playersLoadedAt: String
+  statsLoadedAt: String
+}
+
+type DefStatLine implements StatLine {
+  fumbleRecoveries: Float
+  home: Boolean!
+  interceptions: Float
+  opponent: String
+  playerId: ID!
+  pointsAllowed: Float
+  sacks: Float
+  safeties: Float
+  snapPct: Float
+  tds: Float
+  teamPlayedFor: String!
+  week: Int!
+  yardsAllowed: Float
+}
+
+"""One game of a season (nflverse carries no preseason rows)."""
+type Game {
+  awayCoach: String
+  awayQb: String
+  awayRestDays: Int
+  awayScore: Int
+  awayTeam: String!
+  divisionGame: Boolean!
+  favorite: String
+  final: Boolean!
+  homeCoach: String
+  homeQb: String
+  homeRestDays: Int
+  homeScore: Int
+  homeTeam: String!
+  id: ID!
+  kickoff: String!
+  overtime: Boolean!
+  phase: String!
+  roof: String
+  season: Int!
+  spreadLine: Float
+  stadium: String
+  surface: String
+  temperatureF: Int
+  totalLine: Float
+  week: Int!
+  windMph: Int
+}
+
+type IdpStatLine implements StatLine {
+  assistTackles: Float
+  forcedFumbles: Float
+  fumbleRecoveries: Float
+  home: Boolean!
+  interceptions: Float
+  opponent: String
+  passesDefended: Float
+  playerId: ID!
+  qbHits: Float
+  sacks: Float
+  snapPct: Float
+  soloTackles: Float
+  tacklesForLoss: Float
+  tds: Float
+  teamPlayedFor: String!
+  week: Int!
+}
+
 """One loaded piece: a dataset for one season (ingest_ledger)."""
 type IngestLedgerEntry {
   contentLength: Float
@@ -28,7 +100,68 @@ type JobRun {
   startedAt: String
 }
 
+type KStatLine implements StatLine {
+  fg50Plus: Float
+  fgMade: Float
+  fgMissed: Float
+  home: Boolean!
+  opponent: String
+  playerId: ID!
+  snapPct: Float
+  teamPlayedFor: String!
+  week: Int!
+  xpMade: Float
+}
+
+"""One NFL player (or a synthesized team-defense row)."""
+type Player {
+  age: Int
+  college: String
+  draftPick: Int
+  draftRound: Int
+  draftYear: Int
+  heightIn: Int
+  id: ID!
+  injuryStatus: String
+  jerseyNumber: Int
+  name: String!
+  position: String!
+  practiceStatus: String
+  rookieYear: Int
+  team: String
+  weightLb: Int
+  yearsExp: Int
+}
+
+type QbStatLine implements StatLine {
+  attempts: Float
+  carries: Float
+  completions: Float
+  firstDowns: Float
+  fumbles: Float
+  fumblesLost: Float
+  home: Boolean!
+  interceptions: Float
+  opponent: String
+  passTds: Float
+  passYards: Float
+  playerId: ID!
+  rushTds: Float
+  rushYards: Float
+  sackYards: Float
+  sacksTaken: Float
+  snapPct: Float
+  teamPlayedFor: String!
+  week: Int!
+}
+
 type Query {
+  """When each dataset the screens read was last loaded."""
+  dataFreshness: DataFreshness!
+
+  """Every game of a season, all phases the source carries."""
+  games(season: Int!): [Game!]!
+
   """Every ledger piece. Operator accounts only."""
   ingestLedger: [IngestLedgerEntry!]
 
@@ -40,10 +173,95 @@ type Query {
     """1 to 100"""
     limit: Int = 20
   ): [JobRun!]
+
+  """Every fantasy-relevant player for a season, plus the 32 team defenses."""
+  players(season: Int!): [Player!]!
+
+  """Weekly stat lines for a season, keyset-paged with a hard cap."""
+  statLines(after: String, limit: Int, season: Int!): StatLinePage!
+
+  """All 32 teams with venue facts and the derived bye week."""
+  teams(season: Int!): [Team!]!
+}
+
+type RbStatLine implements StatLine {
+  airYardsShare: Float
+  carries: Float
+  firstDowns: Float
+  fumbles: Float
+  fumblesLost: Float
+  home: Boolean!
+  opponent: String
+  playerId: ID!
+  recTds: Float
+  recYards: Float
+  receptions: Float
+  rushTds: Float
+  rushYards: Float
+  snapPct: Float
+  targetShare: Float
+  targets: Float
+  teamPlayedFor: String!
+  week: Int!
+  wopr: Float
+}
+
+"""
+Shared identity of a weekly stat line; concrete type per position family.
+"""
+interface StatLine {
+  home: Boolean!
+  opponent: String
+  playerId: ID!
+  snapPct: Float
+  teamPlayedFor: String!
+  week: Int!
+}
+
+"""One keyset page of stat lines (cap 5,000; player spec PE4)."""
+type StatLinePage {
+  items: [StatLine!]!
+  nextCursor: String
+}
+
+"""One NFL team with venue facts and the derived bye week."""
+type Team {
+  abbr: String!
+  byeWeek: Int
+  city: String!
+  conference: String!
+  division: String!
+  headCoach: String
+  name: String!
+  nickname: String!
+  roof: String
+  stadium: String
+  surface: String
 }
 
 """The signed-in account."""
 type User {
   id: ID
   isOperator: Boolean
+}
+
+type WrTeStatLine implements StatLine {
+  airYardsShare: Float
+  carries: Float
+  firstDowns: Float
+  fumbles: Float
+  fumblesLost: Float
+  home: Boolean!
+  opponent: String
+  playerId: ID!
+  recTds: Float
+  recYards: Float
+  receptions: Float
+  rushYards: Float
+  snapPct: Float
+  targetShare: Float
+  targets: Float
+  teamPlayedFor: String!
+  week: Int!
+  wopr: Float
 }

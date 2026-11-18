@@ -22,8 +22,8 @@ export function getPool(): Pool {
 /** Ends the pool; the next getPool call creates a new one. */
 export async function closePool(): Promise<void> {
   if (pool) {
-    const p = pool;
+    const closing = pool;
     pool = undefined;
-    await p.end();
+    await closing.end();
   }
 }

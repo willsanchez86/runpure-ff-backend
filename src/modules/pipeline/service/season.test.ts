@@ -10,9 +10,9 @@ function def(partial: Partial<DatasetDef>): DatasetDef {
 }
 
 test('seasonOpenerSwitch is a Wednesday in September', () => {
-  const d = new Date(`${seasonOpenerSwitch(2026)}T00:00:00Z`);
-  assert.equal(d.getUTCMonth(), 8); // September
-  assert.equal(d.getUTCDay(), 3); // Wednesday
+  const openerDate = new Date(`${seasonOpenerSwitch(2026)}T00:00:00Z`);
+  assert.equal(openerDate.getUTCMonth(), 8); // September
+  assert.equal(openerDate.getUTCDay(), 3); // Wednesday
 });
 
 test('currentSeason follows the March 15 rollover for rosters', () => {

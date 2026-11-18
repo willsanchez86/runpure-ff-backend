@@ -2,6 +2,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { applicationDefault, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { env } from '../config/env.js';
 import { getPool } from '../db/pool.js';
 import { findUserByFirebaseUid, type AppUser } from '../modules/account/model/user.model.js';
 
@@ -25,6 +26,13 @@ function firebaseAuth() {
  * token, then finds the account keyed to its uid. No valid token: 401. No account: 403.
  */
 export async function requireUser(req: Request, res: Response, next: NextFunction): Promise<void> {
+  // Local development only: a fixed dev account stands in for a verified sign-in.
+  // env.ts refuses this flag in production (ADR-0015 stays the deployed path).
+  if (env.authDisabled) {
+    req.user = { id: 0, firebaseUid: 'local-dev', isOperator: true };
+    next();
+    return;
+  }
   const match = /^Bearer (.+)$/.exec(req.get('authorization') ?? '');
   if (!match) {
     res.status(401).json({ error: 'missing bearer token' });

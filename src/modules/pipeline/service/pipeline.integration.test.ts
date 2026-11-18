@@ -130,17 +130,17 @@ describe('pipeline load integration', { skip: url ? false : 'set TEST_DATABASE_U
   });
 
   test('serializes runs with the named lock (GET_LOCK)', async () => {
-    const a = await pool.getConnection();
-    const b = await pool.getConnection();
+    const firstConnection = await pool.getConnection();
+    const secondConnection = await pool.getConnection();
     try {
-      assert.equal(await tryAcquireLock(a), true);
-      assert.equal(await tryAcquireLock(b), false); // held by a
-      await releaseLock(a);
-      assert.equal(await tryAcquireLock(b), true); // now free
-      await releaseLock(b);
+      assert.equal(await tryAcquireLock(firstConnection), true);
+      assert.equal(await tryAcquireLock(secondConnection), false); // held by a
+      await releaseLock(firstConnection);
+      assert.equal(await tryAcquireLock(secondConnection), true); // now free
+      await releaseLock(secondConnection);
     } finally {
-      a.release();
-      b.release();
+      firstConnection.release();
+      secondConnection.release();
     }
   });
 });

@@ -5,15 +5,19 @@ import 'dotenv/config';
 function num(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw === '') return fallback;
-  const n = Number(raw);
-  if (!Number.isFinite(n)) throw new Error(`${name} must be a number, got "${raw}"`);
-  return n;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) throw new Error(`${name} must be a number, got "${raw}"`);
+  return parsed;
 }
 
 const production = process.env.NODE_ENV === 'production';
 const allowArbitrary = process.env.GRAPHQL_ALLOW_ARBITRARY === 'true';
 if (production && allowArbitrary) {
   throw new Error('GRAPHQL_ALLOW_ARBITRARY must not be set in production (ADR-0017 item 9)');
+}
+const authDisabled = process.env.AUTH_MODE === 'disabled';
+if (production && authDisabled) {
+  throw new Error('AUTH_MODE=disabled must not be set in production (ADR-0015 is the production path)');
 }
 
 /** Validated settings; DATABASE_URL is read only when first needed. */
@@ -33,11 +37,14 @@ export const env = {
   rateLimitPerMinute: num('RATE_LIMIT_PER_MINUTE', 300),
   /** Local development only; see .env.example. */
   allowArbitraryOperations: allowArbitrary,
+  /** Local development only (owner, 2026-11-17): skip the Firebase token check.
+   * Startup refuses this in production; ADR-0015 remains the deployed path. */
+  authDisabled,
 
   timezone: process.env.PIPELINE_TZ ?? 'America/New_York',
   cronSchedules: (process.env.PIPELINE_CRON ?? '0 6 * * *')
     .split(';')
-    .map((s) => s.trim())
+    .map((entry) => entry.trim())
     .filter(Boolean),
 
   currentSeasonOverride: process.env.CURRENT_SEASON ? num('CURRENT_SEASON', 0) : undefined,
@@ -51,7 +58,7 @@ export const env = {
   /** Hosts the downloader may fetch from, including every redirect hop (SSRF guard, ETL spec §4.2). */
   releaseHostAllowlist: (process.env.RELEASE_HOST_ALLOWLIST ?? 'github.com,githubusercontent.com')
     .split(',')
-    .map((s) => s.trim())
+    .map((entry) => entry.trim())
     .filter(Boolean),
   /** Abort a download whose response headers don't arrive within this many ms. */
   downloadHeaderTimeoutMs: num('DOWNLOAD_HEADER_TIMEOUT_MS', 30000),

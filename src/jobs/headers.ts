@@ -9,7 +9,7 @@ import { openCsv, sourceUrl } from '../modules/pipeline/service/nflverse.service
 import { currentSeason, SINGLE_FILE_SEASON } from '../modules/pipeline/service/season.js';
 
 const { values } = parseArgs({ options: { dataset: { type: 'string', multiple: true } } });
-const selected = datasets.filter((d) => !values.dataset || values.dataset.includes(d.name));
+const selected = datasets.filter((dataset) => !values.dataset || values.dataset.includes(dataset.name));
 
 for (const def of selected) {
   const url = sourceUrl(def, def.scope === 'single_file' ? SINGLE_FILE_SEASON : currentSeason(def.rollover));

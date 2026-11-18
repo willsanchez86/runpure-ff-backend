@@ -13,12 +13,15 @@ export function loadPersistedStore(dir = 'persisted'): Map<string, string> {
   const frontendFile = join(dir, 'frontend.json');
   if (existsSync(frontendFile)) {
     const entries = JSON.parse(readFileSync(frontendFile, 'utf8')) as Record<string, string>;
-    for (const [hash, document] of Object.entries(entries)) store.set(hash, document);
+    for (const [hash, document] of Object.entries(entries)) {
+      // codegen's manifest keys carry a "sha256:" prefix; clients send bare hex (APQ)
+      store.set(hash.replace(/^sha256:/, ''), document);
+    }
   }
 
   const operatorDir = join(dir, 'operator');
   if (existsSync(operatorDir)) {
-    for (const file of readdirSync(operatorDir).filter((f) => f.endsWith('.graphql'))) {
+    for (const file of readdirSync(operatorDir).filter((fileName) => fileName.endsWith('.graphql'))) {
       const document = readFileSync(join(operatorDir, file), 'utf8');
       const hash = createHash('sha256').update(document).digest('hex');
       store.set(hash, document);
