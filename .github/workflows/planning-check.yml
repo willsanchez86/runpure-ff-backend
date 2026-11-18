@@ -12,7 +12,6 @@ jobs:
           repository: ${{ github.repository_owner }}/runpure-ff-planning
           ref: main
           path: planning
-          token: ${{ secrets.PLANNING_REPO_TOKEN }}
       - uses: actions/setup-node@v4
         with: { node-version: 24 }
       - env:
