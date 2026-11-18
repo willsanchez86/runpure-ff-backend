@@ -15,6 +15,10 @@ const allowArbitrary = process.env.GRAPHQL_ALLOW_ARBITRARY === 'true';
 if (production && allowArbitrary) {
   throw new Error('GRAPHQL_ALLOW_ARBITRARY must not be set in production (ADR-0017 item 9)');
 }
+const authDisabled = process.env.AUTH_MODE === 'disabled';
+if (production && authDisabled) {
+  throw new Error('AUTH_MODE=disabled must not be set in production (ADR-0015 is the production path)');
+}
 
 /** Validated settings; DATABASE_URL is read only when first needed. */
 export const env = {
@@ -33,6 +37,9 @@ export const env = {
   rateLimitPerMinute: num('RATE_LIMIT_PER_MINUTE', 300),
   /** Local development only; see .env.example. */
   allowArbitraryOperations: allowArbitrary,
+  /** Local development only (owner, 2026-11-17): skip the Firebase token check.
+   * Startup refuses this in production; ADR-0015 remains the deployed path. */
+  authDisabled,
 
   timezone: process.env.PIPELINE_TZ ?? 'America/New_York',
   cronSchedules: (process.env.PIPELINE_CRON ?? '0 6 * * *')
