@@ -54,6 +54,8 @@ TeamRef.implement({
     surface: fieldBuilder.exposeString('surface', { nullable: true }),
     headCoach: fieldBuilder.exposeString('headCoach', { nullable: true }),
     byeWeek: fieldBuilder.exposeInt('byeWeek', { nullable: true }),
+    logoUrl: fieldBuilder.exposeString('logoUrl', { nullable: true }),
+    color: fieldBuilder.exposeString('color', { nullable: true }),
   }),
 });
 

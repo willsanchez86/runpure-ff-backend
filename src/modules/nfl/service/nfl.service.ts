@@ -53,6 +53,10 @@ export interface ContractTeam {
   surface: string | null;
   headCoach: string | null;
   byeWeek: number | null;
+  /** Squared logo preferred (renders best in chips), then ESPN, then Wikipedia. */
+  logoUrl: string | null;
+  /** Primary team colour, hex. */
+  color: string | null;
 }
 
 /** A contract Game. */
@@ -274,6 +278,8 @@ export async function seasonTeams(pool: Pool, season: number): Promise<ContractT
       surface: home?.surface ?? null,
       headCoach: coach,
       byeWeek,
+      logoUrl: team.team_logo_squared ?? team.team_logo_espn ?? team.team_logo_wikipedia,
+      color: team.team_color,
     };
   });
 }
