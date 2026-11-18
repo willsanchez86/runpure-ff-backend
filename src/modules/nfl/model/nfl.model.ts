@@ -2,8 +2,9 @@
  * docs/api-contract/02-field-mapping.md). Every value is parameter-bound. */
 import type { Pool, RowDataPacket } from 'mysql2/promise';
 
-/** Position groups the contract serves (K lives under SPEC + position='K'). */
-const SKILL_GROUPS = ['QB', 'RB', 'WR', 'TE', 'DB', 'LB', 'DL'];
+/** Position groups the contract serves (K lives under SPEC + position='K').
+ * Individual defensive players were removed from Phase 1 (owner, 2026-11-17). */
+const SKILL_GROUPS = ['QB', 'RB', 'WR', 'TE'];
 
 /** One player row as the contract needs it (age computed in SQL). */
 export interface PlayerRow extends RowDataPacket {
@@ -34,10 +35,11 @@ export async function findSeasonPlayers(pool: Pool, season: number): Promise<Pla
             p.draft_year, p.draft_round, p.draft_pick, p.status
        FROM player p
       WHERE (p.position_group IN (?) OR (p.position_group = 'SPEC' AND p.position = 'K'))
-        AND (p.status = 'ACT'
-             OR EXISTS (SELECT 1 FROM player_week_stat s
-                         WHERE s.player_id = p.gsis_id AND s.season = ?))`,
-    [SKILL_GROUPS, season],
+        AND (EXISTS (SELECT 1 FROM player_week_stat s
+                      WHERE s.player_id = p.gsis_id AND s.season = ?)
+             -- active roster, but only players whose career reaches this season
+             OR (p.status = 'ACT' AND (p.last_season IS NULL OR p.last_season >= ?)))`,
+    [SKILL_GROUPS, season, season],
   );
   return rows;
 }
@@ -202,10 +204,12 @@ export async function findStatPage(
        LEFT JOIN snap_count sc
          ON sc.game_id = s.game_id AND sc.pfr_player_id = p.pfr_id
       WHERE s.season = ? AND s.season_type = 'REG'
+        -- IDP removed from Phase 1 (owner, 2026-11-17): offensive groups + K only
+        AND (p.position_group IN (?) OR (p.position_group = 'SPEC' AND p.position = 'K'))
         AND (s.player_id > ? OR (s.player_id = ? AND s.week > ?))
       ORDER BY s.player_id, s.week
       LIMIT ?`,
-    [season, afterPlayerId, afterPlayerId, afterWeek, limit],
+    [season, SKILL_GROUPS, afterPlayerId, afterPlayerId, afterWeek, limit],
   );
   return rows;
 }
