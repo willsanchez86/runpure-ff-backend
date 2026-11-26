@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS job_run (
   kind           ENUM('ingest','backfill') NOT NULL,
   started_at     DATETIME     NOT NULL,
   finished_at    DATETIME     NULL,
-  outcome        ENUM('running','ok','failed','skipped_locked') NOT NULL DEFAULT 'running',
+  outcome        ENUM('running','ok','failed') NOT NULL DEFAULT 'running',
   pieces_loaded  INT UNSIGNED NOT NULL DEFAULT 0,
   pieces_skipped INT UNSIGNED NOT NULL DEFAULT 0,
   pieces_failed  INT UNSIGNED NOT NULL DEFAULT 0,

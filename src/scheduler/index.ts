@@ -6,8 +6,9 @@ import { runPipeline } from '../modules/pipeline/service/ingest.service.js';
 /**
  * In-process scheduler (ADR-0008; node-cron, ETL spec D12). It only holds schedules and
  * calls the ingest entry point, so moving jobs to a separate worker later means starting
- * the same entry point elsewhere. Overlap between runs is prevented by the MySQL run
- * lock, not here. Default: one run a day at 06:00 Eastern (D7).
+ * the same entry point elsewhere. Overlapping runs are safe without coordination here:
+ * loads replace whole pieces and the ledger commits with the data (ADR-0006).
+ * Default: one run a day at 06:00 Eastern (D7).
  */
 let stopping = false;
 const tasks: ScheduledTask[] = [];

@@ -134,7 +134,7 @@ export async function openCsv(url: string, gzip = false): Promise<AsyncIterable<
   const idle = new IdleTimeout(env.downloadIdleTimeoutMs);
   const downloadCap = new ByteCap(env.maxDownloadBytes, 'download');
   // pipeline, unlike pipe, passes a download/gunzip/guard error on to the parser, so the caller's
-  // loop over rows fails (and the run lock is released) instead of waiting forever.
+  // loop over rows fails instead of waiting forever.
   const ignore = (): void => {};
   if (gzip) {
     const decompressCap = new ByteCap(env.maxDecompressedBytes, 'decompressed data');

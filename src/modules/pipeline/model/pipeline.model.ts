@@ -1,5 +1,5 @@
 /** Queries on ingest_ledger and job_run (ADR-0006; ETL spec §5.3; sql/0001_pipeline_tables.sql). */
-import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
+import type { Connection, Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 
 // Timestamps are written with UTC_TIMESTAMP(): DATETIME values are UTC (ETL spec §7.2.2).
 
@@ -52,9 +52,15 @@ export interface LedgerUpsert {
   error?: string | null;
 }
 
-/** Inserts or updates a piece's ledger row. Status downloading restarts started_at and clears finished_at. */
-export async function upsertLedger(pool: Pool, u: LedgerUpsert): Promise<void> {
-  await pool.query(
+/** A piece's source identity and version: the ledger fields that don't depend on the load's result. */
+export type LedgerPiece = Omit<LedgerUpsert, 'status' | 'rowsLoaded' | 'error'>;
+
+/**
+ * Inserts or updates a piece's ledger row. Status downloading restarts started_at and clears finished_at.
+ * Pass the loading connection to write the row inside that connection's open transaction (ADR-0006).
+ */
+export async function upsertLedger(db: Pool | Connection, u: LedgerUpsert): Promise<void> {
+  await db.query(
     `INSERT INTO ingest_ledger
        (dataset, season, source_url, source_etag, source_last_modified, content_length,
         status, rows_loaded, error, started_at, finished_at)
@@ -89,7 +95,7 @@ export async function upsertLedger(pool: Pool, u: LedgerUpsert): Promise<void> {
 /** Kind of pipeline run. */
 export type JobKind = 'ingest' | 'backfill';
 /** Result of a pipeline run. */
-export type JobOutcome = 'running' | 'ok' | 'failed' | 'skipped_locked';
+export type JobOutcome = 'running' | 'ok' | 'failed';
 
 /** One job_run row. */
 export interface JobRunRow extends RowDataPacket {
