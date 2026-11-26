@@ -80,7 +80,7 @@ src/
   app.ts                     Express app wiring
   server.ts                  Process entry: HTTP server + scheduler + shutdown
   config/env.ts              Environment variables
-  db/pool.ts, db/lock.ts     MySQL pool (UTC); GET_LOCK run lock (ADR-0006)
+  db/pool.ts                 MySQL pool (UTC)
   middleware/                request log, Firebase token check, error handler
   routes/index.ts            mounts /health and the GraphQL endpoint
   graphql/                   Pothos builder, schema, Yoga server, persisted store
@@ -93,9 +93,9 @@ src/
         datasets.ts          nflverse dataset registry + column mappings
         season.ts            current season (D6); which seasons each run loads
         nflverse.service.ts  version HEAD + guarded streamed download (host allowlist, timeouts, caps)
-        load.service.ts      TEMPORARY staging -> swap in one transaction; §8 row-count block
+        load.service.ts      TEMPORARY staging -> swap + ledger row in one transaction; §8 row-count block
         validate.service.ts  header check, drop/dedupe, reference + row-count warnings (§8)
-        ingest.service.ts    one pipeline run (lock, ledger, per-piece load)
+        ingest.service.ts    one pipeline run (ledger, per-piece load)
       graphql/               pipelineRuns, ingestLedger (operator accounts only)
   scheduler/index.ts         cron schedule that calls the ingest entry point
   jobs/                      CLI entry points: ingest, backfill, headers, spike
@@ -196,12 +196,14 @@ scheduled `ingest` keeps the current season fresh (ETL spec D7, D12).
   successful load is skipped, so a normal day reloads only the files nflverse republished.
 - **Season rollover is automatic:** rosters switch to the new season on March 15, every other
   seasonal dataset on the Wednesday after Labor Day (`CURRENT_SEASON` overrides).
-- **Overlap:** a MySQL `GET_LOCK` run lock means a second run exits `skipped_locked` rather
-  than running concurrently.
 - **Idempotent:** a load replaces rows, it never appends — one transaction deletes the rows
-  being replaced (that season, or the whole table) and inserts the staged rows, and `teams`
-  upserts. Re-running a backfill or ingest overwrites the same rows, so it is always safe to
-  run again.
+  being replaced (that season, or the whole table), inserts the staged rows, and marks the
+  piece loaded in `ingest_ledger`; `teams` upserts. Re-running a backfill or ingest overwrites
+  the same rows, so it is always safe to run again.
+- **Overlap:** runs are not coordinated, so two can run at once (a scheduled ingest during a
+  backfill, or two server instances), duplicating the work. That is expected to be safe —
+  loads replace whole pieces, each piece's swap and `loaded` ledger row commit together, and a
+  piece that loses a deadlock fails and the next run retries it — but it is not yet tested.
 
 Finished seasons are not re-fetched daily; to correct an old season, run a targeted backfill
 (`npm run backfill -- --from 2024 --to 2024`).
@@ -222,9 +224,8 @@ SELECT dataset, season, status, rows_loaded, error
 FROM ingest_ledger ORDER BY dataset, season;
 ```
 
-**Outcomes.** A run is `ok` when no piece failed, `failed` when one or more did (the rest
-still loaded), or `skipped_locked` when another run held the lock. A failed piece is isolated:
-the run finishes and the next run retries it.
+**Outcomes.** A run is `ok` when no piece failed, or `failed` when one or more did (the rest
+still loaded). A failed piece is isolated: the run finishes and the next run retries it.
 
 **Warnings vs. failures.** Warnings never fail a run. They are written to `job_run.error` with
 a `WARNINGS:` prefix — the load kept its data but noticed something, such as a player/game
@@ -244,9 +245,6 @@ actually failed has `status = 'failed'` and its reason in that row's `ingest_led
   first piece), or `job_run`/`ingest_ledger` are missing (apply `sql/0001`).
 - **Everything reports "skipped".** Either the datasets have no mapping, or every ETag matched;
   add `--force` to reload unchanged files.
-- **Stuck lock.** A crashed run's `GET_LOCK` clears when its connection closes. If a run reports
-  `skipped_locked` with nothing else running, a connection is still open — restart the server
-  (or the holding process) and re-run.
 
 **Re-running is always safe.** Loads replace rather than append (see Scheduled ingest), so any
 command converges to the same state. To reload a finished season, name it:

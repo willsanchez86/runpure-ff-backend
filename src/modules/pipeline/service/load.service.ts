@@ -1,6 +1,7 @@
 /** Loads one piece through a staging table (ADR-0006; ETL spec §5.3). */
 import type { Pool } from 'mysql2/promise';
 import { env } from '../../../config/env.js';
+import { upsertLedger, type LedgerPiece } from '../model/pipeline.model.js';
 import type { ColumnSpec, DatasetDef } from './datasets.js';
 
 /** CSV tokens treated as NULL. nflverse files are written from R, which uses "NA". */
@@ -20,12 +21,16 @@ const id = (name: string): string => `\`${name.replace(/`/g, '``')}\``;
  * Loads one piece (dataset x season) into its table:
  *   1. rows stream into a session-scoped `<table>__staging` TEMPORARY table in batches;
  *   2. one transaction deletes the rows being replaced and copies staging in, or, for
- *      an upsert dataset (the team table), inserts new rows and updates existing ones;
+ *      an upsert dataset (the team table), inserts new rows and updates existing ones —
+ *      and, when `ledger` is given, marks the piece loaded in ingest_ledger;
  *   3. staging is dropped.
  * A crash before step 2 leaves the target untouched; the TEMPORARY staging is discarded when the
  * connection closes, and an errored load destroys its connection so nothing lingers (ADR-0006).
  * A load whose staged row count falls below
  * `previousRows * env.rowCountMinRatio` is blocked before the swap (§8), keeping the previous data.
+ *
+ * The `loaded` ledger row is written in the swap's transaction, so it commits or rolls back with the
+ * data (ADR-0006). Writes outside it (`downloading`, `failed`) can still overwrite it from another run.
  *
  * `previousRows` is the last successful load's row count for this piece, or null when there is none.
  */
@@ -35,6 +40,7 @@ export async function loadPiece(
   season: number,
   records: AsyncIterable<Record<string, string>>,
   previousRows: number | null = null,
+  ledger: LedgerPiece | null = null,
 ): Promise<number> {
   if (!def.table || !def.columns) {
     throw new Error(`dataset ${def.name} has no table/columns mapping`);
@@ -93,18 +99,18 @@ export async function loadPiece(
         await conn.query(
           `INSERT INTO ${id(table)} (${cols}) SELECT ${cols} FROM ${id(staging)} AS s ON DUPLICATE KEY UPDATE ${updates}`,
         );
-        await conn.commit();
-        await conn.query('DROP TEMPORARY TABLE IF EXISTS ??', [staging]);
-        ok = true;
-        return total;
-      }
-      if (def.scope === 'history') {
-        await conn.query('DELETE FROM ?? WHERE ?? = ?', [table, seasonColumn, season]);
       } else {
-        // single_file: whole table replaced; current_season: previous season removed (ADR-0013)
-        await conn.query('DELETE FROM ??', [table]);
+        if (def.scope === 'history') {
+          await conn.query('DELETE FROM ?? WHERE ?? = ?', [table, seasonColumn, season]);
+        } else {
+          // single_file: whole table replaced; current_season: previous season removed (ADR-0013)
+          await conn.query('DELETE FROM ??', [table]);
+        }
+        await conn.query('INSERT INTO ?? (??) SELECT ?? FROM ??', [table, targetColumns, targetColumns, staging]);
       }
-      await conn.query('INSERT INTO ?? (??) SELECT ?? FROM ??', [table, targetColumns, targetColumns, staging]);
+      if (ledger) {
+        await upsertLedger(conn, { ...ledger, status: 'loaded', rowsLoaded: total, error: null });
+      }
       await conn.commit();
     } catch (err) {
       await conn.rollback();

@@ -1,15 +1,16 @@
 /**
  * Integration tests for the load path against an isolated MySQL schema (ADR-0006 "Confirmation";
  * ETL spec §5.3, §8). Gated on TEST_DATABASE_URL (a runpure_test schema with sql/0001-0012 applied);
- * skipped when unset so unit-only runs need no database. Verifies idempotency, the run lock,
- * crash-safety, atomic rollback, pooled-connection reuse and the upsert path with real data operations.
+ * skipped when unset so unit-only runs need no database. Verifies idempotency, crash-safety, atomic
+ * rollback, the ledger committing with the data, overlapping loads converging, pooled-connection
+ * reuse and the upsert path with real data operations.
  */
 import test, { after, before, beforeEach, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import mysql, { type Pool, type RowDataPacket } from 'mysql2/promise';
 import { findDataset } from './datasets.js';
 import { loadPiece } from './load.service.js';
-import { releaseLock, tryAcquireLock } from '../../../db/lock.js';
+import type { LedgerPiece } from '../model/pipeline.model.js';
 
 const url = process.env.TEST_DATABASE_URL;
 const teamDef = findDataset('teams')!;
@@ -68,7 +69,22 @@ describe('pipeline load integration', { skip: url ? false : 'set TEST_DATABASE_U
   beforeEach(async () => {
     await pool.query('DELETE FROM depth_chart');
     await pool.query('DELETE FROM team');
+    await pool.query('DELETE FROM ingest_ledger WHERE dataset = ?', [depthDef.name]);
   });
+
+  /** Ledger identity for the depth-chart fixture piece. */
+  const depthPiece = (etag: string): LedgerPiece => ({
+    dataset: depthDef.name, season: 2026, sourceUrl: 'http://test/depth_charts_2026.csv',
+    etag, lastModified: null, contentLength: null,
+  });
+
+  const ledgerRow = async (): Promise<RowDataPacket | undefined> => {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      'SELECT status, source_etag, rows_loaded FROM ingest_ledger WHERE dataset = ? AND season = 2026',
+      [depthDef.name],
+    );
+    return rows[0];
+  };
 
   test('upserts the team table, updating existing rows and deleting none', async () => {
     await loadPiece(pool, teamDef, 0, recordsOf([teamRow('ARI', 'Cardinals'), teamRow('PIT', 'Steelers')]));
@@ -129,18 +145,38 @@ describe('pipeline load integration', { skip: url ? false : 'set TEST_DATABASE_U
     }
   });
 
-  test('serializes runs with the named lock (GET_LOCK)', async () => {
-    const firstConnection = await pool.getConnection();
-    const secondConnection = await pool.getConnection();
-    try {
-      assert.equal(await tryAcquireLock(firstConnection), true);
-      assert.equal(await tryAcquireLock(secondConnection), false); // held by a
-      await releaseLock(firstConnection);
-      assert.equal(await tryAcquireLock(secondConnection), true); // now free
-      await releaseLock(secondConnection);
-    } finally {
-      firstConnection.release();
-      secondConnection.release();
-    }
+  test('marks the ledger loaded in the same transaction as the swap', async () => {
+    await loadPiece(pool, teamDef, 0, recordsOf([teamRow('ARI', 'A'), teamRow('PIT', 'B')]));
+    await loadPiece(pool, depthDef, 2026, recordsOf([depthRow('ARI', 1, 1)]), null, depthPiece('v1'));
+    const loaded = await ledgerRow();
+    assert.equal(loaded?.status, 'loaded');
+    assert.equal(loaded?.source_etag, 'v1');
+    assert.equal(Number(loaded?.rows_loaded), 1);
+
+    // A swap that rolls back (FK violation) must roll back its ledger write too.
+    await assert.rejects(() =>
+      loadPiece(pool, depthDef, 2026, recordsOf([depthRow('ZZZ', 1, 1)]), null, depthPiece('v2')),
+    );
+    const after = await ledgerRow();
+    assert.equal(after?.source_etag, 'v1'); // still the version the table holds
+    assert.equal(await count(pool, 'depth_chart'), 1);
+  });
+
+  test('overlapping loads of one piece converge: the ledger matches the table', async () => {
+    await loadPiece(pool, teamDef, 0, recordsOf([teamRow('ARI', 'A'), teamRow('PIT', 'B')]));
+    const two = [depthRow('ARI', 1, 1), depthRow('PIT', 1, 1)];
+    const three = [depthRow('ARI', 1, 1), depthRow('ARI', 2, 1), depthRow('PIT', 1, 1)];
+    const results = await Promise.allSettled([
+      loadPiece(pool, depthDef, 2026, recordsOf(two), null, depthPiece('two')),
+      loadPiece(pool, depthDef, 2026, recordsOf(three), null, depthPiece('three')),
+    ]);
+    // Both may commit, or InnoDB may roll one back on a deadlock (retried next run); never neither.
+    assert.ok(results.some((result) => result.status === 'fulfilled'));
+
+    const rows = await count(pool, 'depth_chart');
+    const ledger = await ledgerRow();
+    assert.ok(rows === 2 || rows === 3);
+    assert.equal(Number(ledger?.rows_loaded), rows); // ledger and table from the same commit
+    assert.equal(ledger?.source_etag, rows === 2 ? 'two' : 'three');
   });
 });
