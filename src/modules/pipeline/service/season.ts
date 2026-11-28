@@ -40,22 +40,21 @@ export interface SeasonRange {
 }
 
 /**
- * Which seasons a run loads for a dataset (ADR-0006, ADR-0013).
- * Scheduled ingest: current season only; the file for a season holds every week, so
- * stat corrections are covered by re-reading the current season's file.
- * Backfill: the full history range for history datasets.
+ * Which seasons a run covers for a dataset (ADR-0006, ADR-0013). Every run covers each season from
+ * the dataset's first season to the current one: nflverse republishes past seasons, so a scheduled
+ * run checks every file's version and the ingest skips the unchanged ones. The first season is
+ * HISTORY_START_SEASON, or the dataset's own `startSeason` when later (play-by-play and depth
+ * charts start in 2026). A backfill may narrow the range.
  */
 export function seasonsToLoad(def: DatasetDef, kind: JobKind, range?: SeasonRange): number[] {
   const current = currentSeason(def.rollover);
   switch (def.scope) {
     case 'single_file':
       return [SINGLE_FILE_SEASON];
-    case 'current_season':
-      return [current];
     case 'history': {
-      if (kind === 'ingest') return [current];
-      const from = range?.from ?? env.historyStartSeason;
-      const to = range?.to ?? current;
+      const requested = kind === 'backfill' ? range : undefined;
+      const from = Math.max(requested?.from ?? env.historyStartSeason, def.startSeason ?? 0);
+      const to = requested?.to ?? current;
       const seasons: number[] = [];
       for (let year = from; year <= to; year++) seasons.push(year);
       return seasons;

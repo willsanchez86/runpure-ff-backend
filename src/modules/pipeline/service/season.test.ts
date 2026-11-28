@@ -36,8 +36,16 @@ test('seasonsToLoad expands a backfill range for history datasets', () => {
   );
 });
 
-test('seasonsToLoad loads only the current season for an incremental history run', () => {
+test('a scheduled run covers every season from the history start to the current one (ADR-0006)', () => {
   const seasons = seasonsToLoad(def({ scope: 'history' }), 'ingest');
-  assert.equal(seasons.length, 1);
-  assert.equal(seasons[0], currentSeason('season_opener'));
+  const current = currentSeason('season_opener');
+  assert.equal(seasons[0], 2022);
+  assert.equal(seasons.at(-1), current);
+  assert.equal(seasons.length, current - 2022 + 1);
+});
+
+test('a dataset with its own first season starts there, for every kind of run (ADR-0013)', () => {
+  const current = currentSeason('season_opener');
+  assert.equal(seasonsToLoad(def({ scope: 'history', startSeason: 2026 }), 'ingest')[0], Math.min(2026, current + 1));
+  assert.deepEqual(seasonsToLoad(def({ scope: 'history', startSeason: 2026 }), 'backfill', { from: 2022, to: 2027 }), [2026, 2027]);
 });

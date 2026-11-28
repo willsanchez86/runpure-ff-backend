@@ -16,6 +16,7 @@
     "spike": "tsx src/jobs/spike-yoga.ts",
     "ingest": "tsx src/jobs/ingest.ts",
     "backfill": "tsx src/jobs/backfill.ts",
+    "reconcile": "tsx src/jobs/reconcile.ts",
     "headers": "tsx src/jobs/headers.ts",
     "lint": "eslint src",
     "test": "tsx --test \"src/**/*.test.ts\"",

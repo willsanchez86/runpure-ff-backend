@@ -123,9 +123,13 @@ export async function findSeasonGames(pool: Pool, season: number): Promise<GameR
     `SELECT game_id, season, game_type, week, DATE_FORMAT(gameday, '%Y-%m-%d') AS gameday,
             gametime, away_team, home_team, away_score, home_score, overtime,
             stadium, roof, surface, temp, wind, spread_line, total_line,
-            away_qb_name, home_qb_name, away_coach, home_coach,
-            away_rest, home_rest, div_game
-       FROM game WHERE season = ?`,
+            away_qb.display_name AS away_qb_name, home_qb.display_name AS home_qb_name,
+            away_coach, home_coach, away_rest, home_rest, div_game
+       FROM game
+       -- quarterback names live on player (ADR-0026); the IDs carry foreign keys (ADR-0022)
+       LEFT JOIN player AS away_qb ON away_qb.gsis_id = game.away_qb_id
+       LEFT JOIN player AS home_qb ON home_qb.gsis_id = game.home_qb_id
+      WHERE game.season = ?`,
     [season],
   );
   return rows;
@@ -207,8 +211,11 @@ export async function findStatPage(
        FROM player_week_stat s
        JOIN player p ON p.gsis_id = s.player_id
        LEFT JOIN game g ON g.game_id = s.game_id
+       -- snap counts name players by PFR ID; player_source maps it to the GSIS ID (ADR-0023)
+       LEFT JOIN player_source pfr ON pfr.gsis_id = s.player_id AND pfr.source_code = 'pfr'
        LEFT JOIN snap_count sc
-         ON sc.game_id = s.game_id AND sc.pfr_player_id = p.pfr_id
+         ON sc.game_id = s.game_id AND sc.source_code = pfr.source_code
+        AND sc.pfr_player_id = pfr.source_player_id
       WHERE s.season = ? AND s.season_type = 'REG'
         -- IDP removed from Phase 1 (owner, 2026-11-17): offensive groups + K only
         AND (p.position_group IN (?) OR (p.position_group = 'SPEC' AND p.position = 'K'))

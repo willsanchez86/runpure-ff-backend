@@ -10,10 +10,23 @@ export interface SanitizeStats {
   deduped: number;
   /** Duplicates resolved by file order because `dedupeBy` was absent (2025+ injuries, §7.2.3). */
   dedupedNoTiebreaker: number;
+  /** Rows left out because their reference is missing from the parent table (roster rows, ADR-0024). */
+  excluded: number;
 }
 
 /** Quotes a MySQL identifier. */
 const bt = (name: string): string => `\`${name.replace(/`/g, '``')}\``;
+
+/**
+ * The parent-table keys a dataset's rows must reference to be loaded (ADR-0024), or undefined when
+ * the dataset has no such requirement. Read once per piece, before its file is streamed.
+ */
+export async function loadParentKeys(pool: Pool, def: DatasetDef): Promise<Set<string> | undefined> {
+  if (!def.requireParent) return undefined;
+  const { table, parentColumn } = def.requireParent;
+  const [rows] = await pool.query<RowDataPacket[]>(`SELECT ${bt(parentColumn)} AS parent_key FROM ${bt(table)}`);
+  return new Set(rows.map((row) => String(row.parent_key)));
+}
 
 /**
  * Throws if the file header is missing a mapped column, unless that column is listed in
@@ -55,11 +68,17 @@ export async function* sanitize(
   def: DatasetDef,
   records: AsyncIterable<Record<string, string>>,
   stats: SanitizeStats,
+  parentKeys?: ReadonlySet<string>,
 ): AsyncGenerator<Record<string, string>> {
   if (!def.dedupeBy) {
     for await (const row of records) {
       if (def.naturalKey && keyOf(def, row) === null) {
         stats.dropped++;
+        continue;
+      }
+      // A row naming a parent that doesn't exist is left out and counted (roster rows, ADR-0024).
+      if (parentKeys && def.requireParent && !parentKeys.has(row[def.requireParent.column])) {
+        stats.excluded++;
         continue;
       }
       yield row;
@@ -93,16 +112,18 @@ export async function* sanitize(
 /**
  * Reads the file header from the first row, asserts it matches the mapping (§8, blocks on mismatch
  * before any staging table is created), then returns the sanitized record stream and a live `stats`
- * object the caller reads after loading.
+ * object the caller reads after loading. With `parentKeys` (from `loadParentKeys`), rows whose
+ * required parent is missing are excluded and counted.
  */
 export async function prepareRecords(
   def: DatasetDef,
   raw: AsyncIterable<Record<string, string>>,
+  parentKeys?: ReadonlySet<string>,
 ): Promise<{ records: AsyncIterable<Record<string, string>>; stats: SanitizeStats }> {
   const iterator = raw[Symbol.asyncIterator]();
   const first = await iterator.next();
   assertHeader(def, first.done ? [] : Object.keys(first.value));
-  const stats: SanitizeStats = { dropped: 0, deduped: 0, dedupedNoTiebreaker: 0 };
+  const stats: SanitizeStats = { dropped: 0, deduped: 0, dedupedNoTiebreaker: 0, excluded: 0 };
 
   async function* reinjected(): AsyncGenerator<Record<string, string>> {
     if (!first.done) yield first.value;
@@ -113,43 +134,5 @@ export async function prepareRecords(
     }
   }
 
-  return { records: sanitize(def, reinjected(), stats), stats };
-}
-
-/**
- * Counts fact rows whose non-null reference has no matching parent (player/game references carry no
- * database foreign key, §7.2) and returns one warning per reference with misses (§8 value check: warns,
- * never blocks). A history dataset is limited to the loaded season. A reference whose parent table is
- * empty is skipped, so a backfill that loads facts before their parents doesn't report spurious misses.
- */
-export async function countMissingReferences(pool: Pool, def: DatasetDef, season: number): Promise<string[]> {
-  if (!def.references?.length || !def.table) return [];
-  const table = def.table;
-  const seasonColumn = def.seasonColumn ?? 'season';
-  const warnings: string[] = [];
-
-  for (const ref of def.references) {
-    const [exists] = await pool.query<RowDataPacket[]>(`SELECT EXISTS(SELECT 1 FROM ${bt(ref.table)}) AS e`);
-    if (!Number(exists[0]?.e)) continue; // parent not loaded yet
-
-    const where = [`f.${bt(ref.column)} IS NOT NULL`, `p.${bt(ref.parentColumn)} IS NULL`];
-    const params: unknown[] = [];
-    if (def.scope === 'history') {
-      where.push(`f.${bt(seasonColumn)} = ?`);
-      params.push(season);
-    }
-    const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT COUNT(*) AS n FROM ${bt(table)} AS f
-         LEFT JOIN ${bt(ref.table)} AS p ON f.${bt(ref.column)} = p.${bt(ref.parentColumn)}
-        WHERE ${where.join(' AND ')}`,
-      params,
-    );
-    const orphanCount = Number(rows[0]?.n ?? 0);
-    if (orphanCount > 0) {
-      warnings.push(
-        `${def.name} ${season}: ${orphanCount} row(s) with ${ref.column} not in ${ref.table}.${ref.parentColumn}`,
-      );
-    }
-  }
-  return warnings;
+  return { records: sanitize(def, reinjected(), stats, parentKeys), stats };
 }

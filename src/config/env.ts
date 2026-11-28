@@ -47,6 +47,9 @@ export const env = {
     .map((entry) => entry.trim())
     .filter(Boolean),
 
+  /** Quarterly reconciliation (ADR-0028): 07:30 on January 1, April 1, July 1 and October 1, after the 06:00 run. */
+  reconcileCron: process.env.RECONCILE_CRON ?? '30 7 1 1,4,7,10 *',
+
   currentSeasonOverride: process.env.CURRENT_SEASON ? num('CURRENT_SEASON', 0) : undefined,
   historyStartSeason: num('HISTORY_START_SEASON', 2022),
   loadBatchSize: num('LOAD_BATCH_SIZE', 1000),
@@ -60,6 +63,10 @@ export const env = {
     .split(',')
     .map((entry) => entry.trim())
     .filter(Boolean),
+  /** Attempts for a request that fails on a network error, 5xx or 429 (ADR-0006). */
+  fetchAttempts: num('FETCH_ATTEMPTS', 3),
+  /** Wait before the second attempt, in ms; doubled before each later one. */
+  fetchBackoffMs: num('FETCH_BACKOFF_MS', 2000),
   /** Abort a download whose response headers don't arrive within this many ms. */
   downloadHeaderTimeoutMs: num('DOWNLOAD_HEADER_TIMEOUT_MS', 30000),
   /** Abort a download that goes this many ms with no data (stall guard, not a whole-download deadline). */

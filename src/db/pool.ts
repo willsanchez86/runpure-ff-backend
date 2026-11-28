@@ -15,6 +15,11 @@ export function getPool(): Pool {
       // DATETIME values are UTC (ETL spec §7.2.2); read and write them as UTC.
       timezone: 'Z',
     });
+    // CURRENT_TIMESTAMP fills created_at and updated_at from the session clock, so every
+    // connection runs in UTC (ADR-0029). The statement is queued ahead of the connection's first use.
+    pool.on('connection', (connection) => {
+      connection.query("SET time_zone = '+00:00'");
+    });
   }
   return pool;
 }
