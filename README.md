@@ -41,7 +41,8 @@ is applied by hand (ADR-0011) — there is no migration runner.
    start again.
 4. **Apply the schema:** run every `sql/*.sql` file in numeric order against the database,
    with MySQL Workbench or the `mysql` client. `0001`-`0002` are the pipeline and user
-   tables; `0003`-`0012` are the ten data tables.
+   tables; `0003`-`0013` create the ten data tables; `0014` and `0015` reshape them (mapping and
+   lookup tables, foreign keys, row timestamps). Always run every file, in order.
 5. **Load data and run:** `npm run backfill -- --from 2022 --to 2026` once to load history,
    then `npm run dev` to serve the API and run the daily ingest. Use `npm run ingest` for a
    one-off incremental run.
@@ -53,7 +54,7 @@ Unit tests need no setup — `npm test` runs them.
 The integration tests load against a real database, so they run only when `TEST_DATABASE_URL`
 is set, and never touch your development data:
 
-1. Create a throwaway schema (e.g. `runpure_test`) and apply `sql/*.sql` to it.
+1. Create a throwaway schema (e.g. `runpure_test`) and apply every `sql/*.sql` file to it, in order.
 2. Set `TEST_DATABASE_URL` to that schema, and set `DATABASE_URL` to the same value. (The
    GraphQL integration test runs only when the two match — a guard against hitting real data.)
 3. Run `npm test`.
@@ -114,16 +115,17 @@ npm run spike        proves GraphQL Yoga runs on this Express 5 app (ADR-0017 it
 npm run dev          API + scheduler, reloading on change
 npm run schema       print schema.graphql
 npm run headers      print each dataset's CSV columns and a sample row (for mapping)
-npm run ingest       one incremental run now (current season only)
+npm run ingest       one incremental run now (every season's file is version-checked; only changed files load)
 npm run backfill     one-time history load: -- --from 2022 --to 2026 [--dataset name]
+npm run reconcile    one reconciliation run now: deletes rows nflverse removed from its files (ADR-0028)
 npm run typecheck    tsc --noEmit
 npm run lint         ESLint: JSDoc required on exports (also runs before each commit and in CI)
 npm test             node:test: unit tests always; DB-gated integration tests when TEST_DATABASE_URL is set
 npm run build && npm start
 ```
 
-`lint` runs before each commit and in CI. `test` does not yet run in CI, so run `npm test`
-locally before pushing a pipeline change.
+`lint` and `typecheck` run before each commit. CI runs lint, typecheck, the whole test suite
+against a throwaway MySQL built from `sql/`, and `npm audit` for production dependencies.
 
 ## Mapping a dataset
 
@@ -143,24 +145,40 @@ drop-and-recreate.
 dictionary in `runpure-ff-planning`. Two guards catch drift on the next run:
 
 - The §8 header check fails a load whose file is missing a mapped column.
-- Staging is built as `CREATE TEMPORARY TABLE ... LIKE <table>`, so the live table is the
-  type contract — a mapped column absent from it fails the load.
+- Staging is built as `CREATE TEMPORARY TABLE ... LIKE <table>` plus the dataset's `stageOnly`
+  columns, so the live table is the type contract — a mapped column absent from it fails the load.
+- The schema test (`schema.integration.test.ts`) fails when a written column is missing from its
+  table, or a table column is never written.
 
 **Keep the engine generic:** `datasets.ts` is the one place a dataset's shape is described. A
-dataset-specific need — an optional column, a dedupe tiebreaker, a reference to check —
-belongs in its `DatasetDef` metadata, never in a branch inside the download/validate/load
+dataset-specific need — an optional column, a dedupe tiebreaker, a staged-only column, a lookup
+or mapping table to fill, a required parent — belongs in its `DatasetDef` metadata, never in a branch inside the download/validate/load
 services.
 
 ## Load rules
 
 - **One piece = one file:** a dataset × season (season 0 for single-file datasets) (D5).
 - **ETag skip:** a piece is skipped when its ETag matches the ledger's last successful load.
-- **Staging then swap:** rows stream into `<table>__staging` in batches, then one transaction
-  replaces the target rows and commits — that season for `history` datasets, the whole table
-  otherwise.
-- **What each scope keeps:** `history` keeps 2022-current (ADR-0006); `current_season`
-  (play-by-play, depth charts) keeps only the current season (ADR-0013); `single_file` is
-  replaced whole.
+- **Staging then upsert (ADR-0028):** rows stream into `<table>__staging` in batches, then one
+  transaction inserts the new rows and updates the changed ones. Unchanged rows are not rewritten,
+  and **no load deletes rows**. Rows nflverse removed from a file are deleted only by the quarterly
+  reconciliation (`npm run reconcile`; scheduled January 1, April 1, July 1 and October 1), and
+  never from `team`, `player` or `game`.
+- **Load order (ADR-0022):** parents first, because every player and game reference has a foreign
+  key: teams, players, schedules, rosters, weekly stats and injuries, snap counts, depth charts,
+  play-by-play.
+- **What is kept:** `history` datasets keep every season from 2022 (ADR-0006); play-by-play and
+  depth charts start with 2026 and keep every season after (ADR-0013); `single_file` datasets hold
+  all seasons in one file.
+- **Provider IDs (ADR-0023):** a player's or game's ID at another provider (PFR, ESPN, Sleeper, …)
+  is a row in `player_source` / `game_source`. players.csv wins over the roster; a conflicting ID,
+  or one shared by two players or games, is logged and not stored. Snap counts keep the PFR ID and
+  reach `player` through `player_source`.
+- **Unidentifiable players (ADR-0024):** a snap-count or depth-chart row with no known player
+  loads with an empty link and is counted; it is linked on a later run once the ID is known.
+  Roster rows for players missing from players.csv are excluded and counted.
+- **Row timestamps (ADR-0029):** every table has `created_at` and `updated_at`, set by MySQL;
+  every connection runs in UTC.
 - **Season rollover (D6):** rosters switch to the new season on March 15, every other seasonal
   dataset on the Wednesday after Labor Day. `CURRENT_SEASON` overrides both.
 - **NULLs:** empty strings and `NA` become `NULL`.
@@ -170,43 +188,48 @@ services.
 - The file header must contain every mapped column (injuries accepts either of its two headers).
 - Rows with an empty natural key are dropped; injuries are deduped (latest `date_modified`
   wins, else last in file).
-- A sharp row-count drop blocks the load before the swap (`ROW_COUNT_MIN_RATIO`, default 0.5).
-- References with no parent row, and row-count drops, are recorded as warnings in `job_run.error`.
+- A sharp row-count drop blocks the load before publishing (`ROW_COUNT_MIN_RATIO`, default 0.5).
+- A reference to a missing player, game, team, stadium or position fails the piece (foreign keys).
 
 **Download hardening (ETL spec §4.2):**
 
 - Redirects are followed by hand against an https host allowlist (`RELEASE_HOST_ALLOWLIST`).
 - Header and inter-chunk idle timeouts, plus download and gzip-decompression byte caps, guard
   a stalled or oversized fetch.
+- A network error, HTTP 5xx or 429 is retried: `FETCH_ATTEMPTS` tries (default 3), waiting
+  `FETCH_BACKOFF_MS` (default 2000) and then twice as long. A download that breaks mid-stream
+  starts its piece over within the same tries.
 - The source base is `RELEASE_BASE`. Staging is a session `TEMPORARY` table, discarded when
   the connection closes.
 
 ## Scheduled ingest
 
 New data arrives two ways: the one-time `npm run backfill` loads history once, then a daily
-scheduled `ingest` keeps the current season fresh (ETL spec D7, D12).
+scheduled `ingest` keeps every season current (ETL spec D7, D12).
 
 - **When:** once a day at `PIPELINE_CRON` (default `0 6 * * *`, i.e. 06:00) in `PIPELINE_TZ`
   (default `America/New_York`, so 06:00 Eastern, tracking EST/EDT). Both are overridable.
 - **Where:** the scheduler runs inside the server process (`npm run dev`, or the deployed
   server). No running server means no automatic run; trigger one by hand with `npm run ingest`,
   or point an external cron at that command.
-- **What it loads:** the current season only for `history` and `current_season` datasets, the
-  whole file for `single_file` datasets. A piece whose source ETag matches the ledger's last
-  successful load is skipped, so a normal day reloads only the files nflverse republished.
+- **What it loads:** every season's file of each seasonal dataset is version-checked, and the
+  whole file of each `single_file` dataset. A piece whose source ETag matches the ledger's last
+  successful load is skipped, so a normal day reloads only the files nflverse republished —
+  past seasons included.
 - **Season rollover is automatic:** rosters switch to the new season on March 15, every other
   seasonal dataset on the Wednesday after Labor Day (`CURRENT_SEASON` overrides).
-- **Idempotent:** a load replaces rows, it never appends — one transaction deletes the rows
-  being replaced (that season, or the whole table), inserts the staged rows, and marks the
-  piece loaded in `ingest_ledger`; `teams` upserts. Re-running a backfill or ingest overwrites
-  the same rows, so it is always safe to run again.
+- **Idempotent:** every load is an upsert. Re-running a backfill or ingest writes only rows that
+  are new or changed, so it is always safe to run again.
+- **Retries:** a publishing transaction that fails (a deadlock, a lock-wait timeout) is tried up
+  to two more times in the same run; every failed try is written to the run log. A missing
+  parent row or duplicate key fails at once.
 - **Overlap:** runs are not coordinated, so two can run at once (a scheduled ingest during a
-  backfill, or two server instances), duplicating the work. That is expected to be safe —
-  loads replace whole pieces, each piece's swap and `loaded` ledger row commit together, and a
-  piece that loses a deadlock fails and the next run retries it — but it is not yet tested.
-
-Finished seasons are not re-fetched daily; to correct an old season, run a targeted backfill
-(`npm run backfill -- --from 2024 --to 2024`).
+  backfill, or two server instances), duplicating the work. Both load the same file minutes
+  apart; if an older copy commits last, the next run sees the changed version and reloads it.
+  This risk is accepted (ADR-0006).
+- **Quarterly reconciliation:** `RECONCILE_CRON` (default `30 7 1 1,4,7,10 *`: 07:30 on
+  January 1, April 1, July 1 and October 1) compares every loaded piece with nflverse's current
+  file and deletes rows no longer in it. It is the only job that deletes data rows.
 
 ## Operating the pipeline
 
@@ -226,11 +249,14 @@ FROM ingest_ledger ORDER BY dataset, season;
 
 **Outcomes.** A run is `ok` when no piece failed, or `failed` when one or more did (the rest
 still loaded). A failed piece is isolated: the run finishes and the next run retries it.
+A reconciliation run appears with `kind = 'reconcile'`.
 
-**Warnings vs. failures.** Warnings never fail a run. They are written to `job_run.error` with
-a `WARNINGS:` prefix — the load kept its data but noticed something, such as a player/game
-reference with no parent row, or a duplicate injury key kept by file order. A piece that
-actually failed has `status = 'failed'` and its reason in that row's `ingest_ledger.error`.
+**Warnings, the run log and failures.** `job_run.error` holds the run's record: a `WARNINGS:`
+section (provider IDs not stored because they conflicted or were shared, rows still without a
+player, a duplicate injury key kept by file order), then a `LOG:` section with one line per piece
+and per count (rows loaded, dropped, excluded, linked, retried). Warnings never fail a run. A
+piece that actually failed has `status = 'failed'` and its reason in that row's
+`ingest_ledger.error`.
 
 **Common cases:**
 

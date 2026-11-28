@@ -93,7 +93,7 @@ export async function upsertLedger(db: Pool | Connection, u: LedgerUpsert): Prom
 // ---- job_run ---------------------------------------------------------------
 
 /** Kind of pipeline run. */
-export type JobKind = 'ingest' | 'backfill';
+export type JobKind = 'ingest' | 'backfill' | 'reconcile';
 /** Result of a pipeline run. */
 export type JobOutcome = 'running' | 'ok' | 'failed';
 

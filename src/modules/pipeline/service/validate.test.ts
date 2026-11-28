@@ -14,7 +14,7 @@ async function run(
   d: DatasetDef,
   rows: Record<string, string>[],
 ): Promise<{ out: Record<string, string>[]; stats: SanitizeStats }> {
-  const stats: SanitizeStats = { dropped: 0, deduped: 0, dedupedNoTiebreaker: 0 };
+  const stats: SanitizeStats = { dropped: 0, deduped: 0, dedupedNoTiebreaker: 0, excluded: 0 };
   async function* source(): AsyncGenerator<Record<string, string>> {
     for (const r of rows) yield r;
   }

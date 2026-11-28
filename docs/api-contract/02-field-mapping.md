@@ -33,7 +33,7 @@
 
 ## StatLine (interface + 6 types) ← `player_week_stat` (+ `snap_count`, `team_week_stat`, `game`)
 
-Shared: playerId←`player_id` · week · teamPlayedFor←`team` · opponent←`opponent_team` · home (team = `game.home_team`) · snapPct←`snap_count.offense_pct`×100 (defense_pct for IDP; join via `player.pfr_id` + `game_id`).
+Shared: playerId←`player_id` · week · teamPlayedFor←`team` · opponent←`opponent_team` · home (team = `game.home_team`) · snapPct←`snap_count.offense_pct`×100 (defense_pct for IDP; join through `player_source` (`source_code = 'pfr'`) + `game_id`; ADR-0023).
 
 | Type | Fields ← columns |
 |---|---|
@@ -56,7 +56,8 @@ Shared: playerId←`player_id` · week · teamPlayedFor←`team` · opponent←`
 | homeTeam / awayTeam / homeScore / awayScore / overtime | columns; final = `home_score IS NOT NULL` |
 | stadium / roof / surface / temperatureF←`temp` / windMph←`wind` | columns |
 | spreadLine / totalLine | `ABS(spread_line)` / `total_line`; favorite = `spread_line > 0 ? home : away` (nflverse: positive favours home) |
-| homeQb / awayQb / homeCoach / awayCoach | `home_qb_name` etc. |
+| homeQb / awayQb | `player.display_name` through `game.home_qb_id` / `away_qb_id` (ADR-0026) |
+| homeCoach / awayCoach | `home_coach` / `away_coach` |
 | homeRestDays / awayRestDays / divisionGame | `home_rest` / `away_rest` / `div_game` |
 
 ## DataFreshness ← `ingest_ledger`

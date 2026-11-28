@@ -11,6 +11,41 @@ const USER_AGENT = 'runpure-ff-pipeline';
 // GitHub redirects a release asset once to its storage host; a few hops is ample headroom.
 const MAX_REDIRECTS = 4;
 
+/** A download that failed in a way a retry may fix: a network error, a stall, HTTP 5xx or 429 (ADR-0006). */
+export class DownloadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DownloadError';
+  }
+}
+
+/** True for the HTTP statuses worth retrying: server errors and "too many requests". */
+export function isTransientStatus(status: number): boolean {
+  return status >= 500 || status === 429;
+}
+
+/**
+ * Runs `operation`, retrying it while it throws a DownloadError, up to `attempts` tries in total,
+ * waiting `backoffMs` before the second try and twice as long before each later one. Any other
+ * error (a disallowed URL, HTTP 404) is thrown at once. `onRetry` is told about each failed try.
+ */
+export async function retryTransient<Result>(
+  operation: () => Promise<Result>,
+  attempts: number,
+  backoffMs: number,
+  onRetry: (message: string) => void = () => {},
+): Promise<Result> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await operation();
+    } catch (err) {
+      if (!(err instanceof DownloadError) || attempt >= attempts) throw err;
+      onRetry(`attempt ${attempt} of ${attempts} failed, retrying: ${err.message}`);
+      await new Promise((resolve) => setTimeout(resolve, backoffMs * 2 ** (attempt - 1)));
+    }
+  }
+}
+
 /** Version headers of a release file, compared with the ledger to skip unchanged files. */
 export interface SourceVersion {
   url: string;
@@ -50,9 +85,13 @@ async function fetchGuarded(url: string, method: 'GET' | 'HEAD'): Promise<Respon
     let res: Response;
     try {
       res = await fetch(current, { method, redirect: 'manual', headers: { 'user-agent': USER_AGENT }, signal: controller.signal });
+    } catch (err) {
+      // No response at all: a network failure or the header timeout. Worth another try.
+      throw new DownloadError(`${method} ${new URL(current).hostname}: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       clearTimeout(timer);
     }
+    if (isTransientStatus(res.status)) throw new DownloadError(`${method} ${url} -> HTTP ${res.status}`);
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get('location');
       if (!location) throw new Error(`redirect without Location from ${new URL(current).hostname}`);
@@ -105,10 +144,11 @@ class IdleTimeout extends Transform {
 /**
  * Version check without downloading. Follows GitHub's redirect to its storage host by hand (§4.2),
  * returning the ETag, Last-Modified and Content-Length of the final response (the redirect itself
- * carries none). If the host returns no ETag the piece reloads every run (§4.2).
+ * carries none). If the host returns no ETag the piece reloads every run (§4.2). A network error,
+ * 5xx or 429 is retried (ADR-0006); `onRetry` receives a line per failed try.
  */
-export async function headSource(url: string): Promise<SourceVersion> {
-  const res = await fetchGuarded(url, 'HEAD');
+export async function headSource(url: string, onRetry?: (message: string) => void): Promise<SourceVersion> {
+  const res = await retryTransient(() => fetchGuarded(url, 'HEAD'), env.fetchAttempts, env.fetchBackoffMs, onRetry);
   if (!res.ok) throw new Error(`HEAD ${url} -> HTTP ${res.status}`);
   const length = res.headers.get('content-length');
   return {
@@ -125,8 +165,12 @@ export async function headSource(url: string): Promise<SourceVersion> {
  * stalled, oversized or decompression-bomb download fails the piece instead of exhausting the
  * always-on process (§4.2). Nothing is held in memory beyond the parser buffers (ADR-0008).
  */
-export async function openCsv(url: string, gzip = false): Promise<AsyncIterable<Record<string, string>>> {
-  const res = await fetchGuarded(url, 'GET');
+export async function openCsv(
+  url: string,
+  gzip = false,
+  onRetry?: (message: string) => void,
+): Promise<AsyncIterable<Record<string, string>>> {
+  const res = await retryTransient(() => fetchGuarded(url, 'GET'), env.fetchAttempts, env.fetchBackoffMs, onRetry);
   if (!res.ok || !res.body) throw new Error(`GET ${url} -> HTTP ${res.status}`);
 
   const source = Readable.fromWeb(res.body as unknown as WebReadableStream);
